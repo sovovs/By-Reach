@@ -65,9 +65,6 @@ def test_twitter_operational_docs_explain_the_environment_boundary():
         ROOT / "docs" / "install.md",
         ROOT / "docs" / "troubleshooting.md",
         ROOT / "by_reach" / "guides" / "setup-twitter.md",
-        ROOT / "by_reach" / "skill" / "SKILL.md",
-        ROOT / "by_reach" / "skill" / "SKILL_en.md",
-        ROOT / "by_reach" / "skill" / "references" / "social.md",
     )
 
     for path in operational_docs:
@@ -78,7 +75,7 @@ def test_twitter_operational_docs_explain_the_environment_boundary():
     twitter_guide = (
         ROOT / "by_reach" / "guides" / "setup-twitter.md"
     ).read_text(encoding="utf-8")
-    assert "不会执行 `twitter status`" in twitter_guide
+    assert "`doctor` 不会执行" in twitter_guide
     assert "不会修改当前 Shell" in twitter_guide
     assert "Export → Header String" in twitter_guide
     assert "cookie JSON" not in twitter_guide
@@ -179,16 +176,34 @@ def test_public_guidance_never_puts_secrets_in_process_arguments():
     assert not violations, "\n".join(violations)
 
 
-def test_skill_explains_unverified_backend_state():
-    """A null backend is an explicit safety state, not a routing instruction."""
-    skills = (
-        ROOT / "by_reach" / "skill" / "SKILL.md",
-        ROOT / "by_reach" / "skill" / "SKILL_en.md",
-    )
-    for path in skills:
+def test_current_user_guidance_has_no_retired_webpage_executor():
+    """Current docs must agree with the terminal byCLI webpage policy.
+
+    Changelog and design records deliberately retain historical terminology;
+    this test covers only documentation that instructs a user or operator.
+    """
+    documents = [
+        ROOT / "README.md",
+        ROOT / "llms.txt",
+        ROOT / "CONTRIBUTING.md",
+        ROOT / "docs" / "install.md",
+        ROOT / "docs" / "update.md",
+        ROOT / "docs" / "troubleshooting.md",
+        ROOT / "docs" / "cookie-export.md",
+        ROOT / "docs" / "README_en.md",
+        ROOT / "docs" / "README_ja.md",
+        ROOT / "docs" / "README_ko.md",
+        *sorted((ROOT / "by_reach" / "guides").glob("*.md")),
+    ]
+    retired = ("Jina Reader", "r.jina.ai", "Web Reader", "OpenCLI", "web_fetch")
+    violations = []
+    for path in documents:
         text = path.read_text(encoding="utf-8")
-        assert "active_backend: null" in text, path.relative_to(ROOT)
-        assert "Doctor" in text, path.relative_to(ROOT)
+        for marker in retired:
+            if marker.lower() in text.lower():
+                violations.append(f"{path.relative_to(ROOT)}: {marker}")
+
+    assert not violations, "\n".join(violations)
 
 
 def test_video_reference_has_content_level_youtube_fallbacks():
@@ -196,23 +211,13 @@ def test_video_reference_has_content_level_youtube_fallbacks():
     text = (
         ROOT / "by_reach" / "skill" / "references" / "video.md"
     ).read_text(encoding="utf-8")
-    assert "opencli youtube transcript" in text
-    assert "最多重试 3 次" in text
+    assert "yt-dlp" in text
+    assert "bycli youtube search" in text
     assert "by-reach transcribe" in text
 
 
-def test_skill_routes_finance_and_documents_opencli_discovery():
-    skills = (
-        ROOT / "by_reach" / "skill" / "SKILL.md",
-        ROOT / "by_reach" / "skill" / "SKILL_en.md",
-    )
-    for path in skills:
-        text = path.read_text(encoding="utf-8")
-        assert "references/finance.md" in text, path.relative_to(ROOT)
-        assert "opencli list" in text, path.relative_to(ROOT)
-        assert "--help" in text, path.relative_to(ROOT)
-
+def test_skill_routes_finance_through_declared_bycli_fallback():
     finance = ROOT / "by_reach" / "skill" / "references" / "finance.md"
     text = finance.read_text(encoding="utf-8")
-    assert "opencli xueqiu stock" in text
-    assert "by-reach configure --from-browser chrome --platform xueqiu" in text
+    assert "bycli xueqiu search" in text
+    assert "不得自行发起网页 HTTP 请求" in text
