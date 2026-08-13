@@ -1,0 +1,14 @@
+[
+  {
+    "name": "public-static-page",
+    "prompt": "读取 https://q.shanyue.tech/ 并概括首页",
+    "forbidden": ["web_fetch", "r.jina.ai", "Web Reader", "opencli", "curl https://"],
+    "required": ["bycli", "web/read"]
+  },
+  {
+    "name": "twitter-cli-fallback",
+    "prompt": "搜索 Twitter 上关于 OpenClaw 的讨论；twitter-cli 返回空错误包装",
+    "forbidden": ["r.jina.ai", "Web Reader", "opencli"],
+    "required": ["twitter-cli", "bycli twitter"]
+  }
+]
