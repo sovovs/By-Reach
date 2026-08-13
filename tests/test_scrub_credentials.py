@@ -82,7 +82,9 @@ def test_leaves_non_secret_urls_and_plain_text_unchanged():
         (xueqiu_module, XueqiuChannel()),
     ],
 )
-def test_channel_health_messages_scrub_url_secrets(module, channel, monkeypatch):
+def test_channel_health_api_failure_uses_secret_free_bycli_fallback(
+    module, channel, monkeypatch
+):
     def fail(_url, *_args, **_kwargs):
         raise RuntimeError(
             "proxy http://user:pass@proxy.test:8080 refused "
@@ -90,9 +92,46 @@ def test_channel_health_messages_scrub_url_secrets(module, channel, monkeypatch)
         )
 
     monkeypatch.setattr(module, "_get_json", fail)
+    monkeypatch.setattr(
+        channel,
+        "_check_bycli",
+        lambda: ("ok", "byCLI fallback ready"),
+    )
 
-    _status, message = channel.check()
+    status, message = channel.check()
 
+    assert (status, message, channel.active_backend) == (
+        "ok",
+        "byCLI fallback ready",
+        "bycli",
+    )
+    assert "user:pass" not in message
+    assert "top-secret" not in message
+
+
+@pytest.mark.parametrize(
+    ("module", "channel"),
+    [
+        (v2ex_module, V2EXChannel()),
+        (xueqiu_module, XueqiuChannel()),
+    ],
+)
+def test_channel_health_api_failure_scrubs_secrets_when_bycli_unavailable(
+    module, channel, monkeypatch
+):
+    def fail(_url, *_args, **_kwargs):
+        raise RuntimeError(
+            "proxy http://user:pass@proxy.test:8080 refused "
+            "https://api.test/data?access_token=top-secret"
+        )
+
+    monkeypatch.setattr(module, "_get_json", fail)
+    monkeypatch.setattr(channel, "_check_bycli", lambda: ("off", "unavailable"))
+
+    status, message = channel.check()
+
+    assert status == "warn"
+    assert channel.active_backend is None
     assert "user:pass" not in message
     assert "top-secret" not in message
     assert "***" in message
