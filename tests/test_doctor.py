@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
-import agent_reach.doctor as doctor
-from agent_reach.config import Config
+import by_reach.doctor as doctor
+from by_reach.config import Config
+from by_reach.executor_runtime import ExecutionResult
 
 
 class _StubChannel:
@@ -58,6 +59,8 @@ class TestDoctor:
                 "tier": 0,
                 "backends": ["requests"],
                 "active_backend": "requests",
+                "active_probe_backend": None,
+                "probe_status": None,
             },
             "github": {
                 "status": "warn",
@@ -66,6 +69,8 @@ class TestDoctor:
                 "tier": 0,
                 "backends": ["gh"],
                 "active_backend": None,
+                "active_probe_backend": None,
+                "probe_status": None,
             },
             "exa_search": {
                 "status": "off",
@@ -74,8 +79,67 @@ class TestDoctor:
                 "tier": 1,
                 "backends": ["Exa"],
                 "active_backend": None,
+                "active_probe_backend": None,
+                "probe_status": None,
             },
         }
+
+    def test_real_web_channel_reports_confirmed_bycli_capability_as_active(
+        self, monkeypatch
+    ):
+        from by_reach.channels.web import WebChannel
+
+        calls = []
+
+        def runner(args, timeout=None):
+            calls.append((list(args), timeout))
+            return ExecutionResult(
+                0,
+                json.dumps(
+                    [
+                        {
+                            "command": "web/read",
+                            "access": "read",
+                            "site": "web",
+                        }
+                    ]
+                ),
+                "",
+            )
+
+        channel = WebChannel(runner=runner)
+        monkeypatch.setattr(doctor, "get_all_channels", lambda: [channel])
+
+        result = doctor.check_all(config=None)["web"]
+
+        assert result["backends"] == ["bycli"]
+        assert result["active_backend"] == "bycli"
+        assert result["active_probe_backend"] is None
+        assert result["probe_status"] is None
+        assert calls == [(["bycli", "list", "-f", "json"], 10)]
+
+    @pytest.mark.parametrize(
+        ("name", "backend"), [("github", "gh CLI"), ("youtube", "yt-dlp")]
+    )
+    def test_approved_active_backend_is_not_reported_as_probe(
+        self, monkeypatch, name, backend
+    ):
+        channel = _StubChannel(
+            name,
+            name,
+            0,
+            "ok",
+            "healthy",
+            [backend],
+            active_backend=backend,
+        )
+        monkeypatch.setattr(doctor, "get_all_channels", lambda: [channel])
+
+        result = doctor.check_all(config=None)[name]
+
+        assert result["active_backend"] == backend
+        assert result["active_probe_backend"] is None
+        assert result["probe_status"] is None
 
     def test_format_report(self):
         report = doctor.format_report(
@@ -107,7 +171,7 @@ class TestDoctor:
         # Strip Rich markup tags for assertion (PR #170 added [bold], [yellow] etc.)
         import re
         plain = re.sub(r"\[[^\]]*\]", "", report)
-        assert "Agent Reach" in plain
+        assert "By-Reach" in plain
         assert "装好即用：" in plain
         assert "1/3 个渠道可用" in plain
         # Inactive optional channels should be summarized in one line
@@ -116,7 +180,7 @@ class TestDoctor:
 
 def test_stale_active_backend_does_not_leak_into_errored_result(monkeypatch):
     """渠道单例上一轮的 active_backend 不得泄漏进本轮异常结果(Codex review 发现)。"""
-    from agent_reach import doctor
+    from by_reach import doctor
 
     class _ExplodingChannel:
         name = "boom"
@@ -132,6 +196,8 @@ def test_stale_active_backend_does_not_leak_into_errored_result(monkeypatch):
     results = doctor.check_all(config=None)
     assert results["boom"]["status"] == "error"
     assert results["boom"]["active_backend"] is None
+    assert results["boom"]["active_probe_backend"] is None
+    assert results["boom"]["probe_status"] is None
 
 
 def test_channel_exception_credentials_are_scrubbed(monkeypatch):
@@ -222,12 +288,9 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
     monkeypatch, tmp_path, capsys
 ):
     """Run the real Doctor collector with deterministic external probes."""
-    import agent_reach.backends.opencli as opencli
-    import agent_reach.channels.bilibili as bilibili
-    import agent_reach.channels.v2ex as v2ex
-    import agent_reach.channels.xiaohongshu as xiaohongshu
-    import agent_reach.channels.xueqiu as xueqiu
-    from agent_reach import cli
+    import by_reach.channels.v2ex as v2ex
+    import by_reach.channels.xueqiu as xueqiu
+    from by_reach import cli
 
     workdir = tmp_path / "empty-workdir"
     workdir.mkdir()
@@ -238,14 +301,12 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
 
     available = {
         "gh",
-        "opencli",
         "yt-dlp",
         "bili",
         "ffmpeg",
         "mcporter",
         "twitter",
         "rdt",
-        "xhs",
         "deno",
         "node",
     }
@@ -272,29 +333,30 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
             assert kwargs["env"]["GH_TELEMETRY"] == "false"
             assert kwargs["env"]["DO_NOT_TRACK"] == "true"
             output = "gh version 2.92.0"
-        elif name == "opencli":
-            assert argv[1:] == ["--version"]
-            output = "1.8.6"
         elif name == "yt-dlp":
             output = "2026.01.01"
         elif name == "bili":
             output = "0.3.0"
         elif name == "ffmpeg":
             output = "ffmpeg version 7.0"
+        elif name == "bycli":
+            assert argv[1:] == ["list", "-f", "json"]
+            assert kwargs["shell"] is False
+            output = json.dumps(
+                [
+                    {
+                        "command": command,
+                        "access": "read",
+                        "site": "web",
+                    }
+                    for command in ("web/read", "twitter/search", "reddit/search", "bilibili/search", "facebook/search", "instagram/search", "linkedin/search", "xiaohongshu/search", "youtube/search", "v2ex/hot", "xueqiu/search")
+                ]
+            )
         else:
             pytest.fail(f"unexpected Doctor subprocess: {argv}")
         return subprocess.CompletedProcess(argv, 0, output, "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(opencli, "_fetch_daemon_status", lambda timeout=2: None)
-    monkeypatch.setattr(opencli, "_extension_installed_on_disk", lambda: False)
-    monkeypatch.setattr(
-        opencli, "_unpacked_extension_files_present", lambda: False
-    )
-    monkeypatch.setattr(bilibili, "_search_api_ok", lambda: False)
-    monkeypatch.setattr(
-        xiaohongshu, "_mcp_service_reachable", lambda timeout=3: False
-    )
     monkeypatch.setattr(v2ex, "_get_json", lambda _url: [])
     monkeypatch.setattr(
         xueqiu,
@@ -314,6 +376,9 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
     payload = json.loads(capsys.readouterr().out)
     assert payload["github"]["status"] == "warn"
     assert payload["github"]["active_backend"] is None
+    assert payload["web"]["status"] == "ok"
+    assert payload["web"]["active_backend"] == "bycli"
+    assert ["bycli", "list", "-f", "json"] in calls
     for channel_name in (
         "twitter",
         "reddit",
@@ -321,5 +386,5 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
         "instagram",
         "xiaohongshu",
     ):
-        assert payload[channel_name]["status"] == "warn"
-        assert payload[channel_name]["active_backend"] is None
+        assert payload[channel_name]["status"] == "ok"
+        assert payload[channel_name]["active_backend"] == "bycli"

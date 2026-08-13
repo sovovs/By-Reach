@@ -1,107 +1,41 @@
-# Contributing to Agent Reach
+# Contributing to By-Reach
 
-Thank you for your interest in contributing to Agent Reach! This document provides guidelines and instructions for contributing.
+Thanks for contributing. By-Reach is a fork that retains the complete Git
+history and MIT license of
+[Panniantong/Agent-Reach](https://github.com/Panniantong/Agent-Reach).
 
-## Getting Started
-
-1. Fork the repository on GitHub
-2. Clone your fork locally
-3. Create a new branch for your contribution
-4. Make your changes
-5. Run tests and linting
-6. Submit a pull request
-
-## Development Setup
+## Development setup
 
 ```bash
-# Clone your fork
-git clone https://github.com/YOUR_USERNAME/Agent-Reach.git
-cd Agent-Reach
-
-# Install in development mode
-pip install -e ".[dev]"
-
-# Install pre-commit hooks (optional but recommended)
-pre-commit install
+git clone https://github.com/YOUR_USERNAME/By-Reach.git
+cd By-Reach
+python -m pip install -e '.[dev]'
 ```
 
-## Code Style
-
-We use the following tools to maintain code quality:
-
-- **ruff**: Linting and import sorting
-- **mypy**: Type checking
-- **pytest**: Testing
-
-Run all checks before submitting a PR:
+Before opening a pull request, run:
 
 ```bash
-# Linting
-ruff check agent_reach tests
-ruff format agent_reach tests
-
-# Type checking
-mypy agent_reach
-
-# Tests
-pytest
+ruff check by_reach tests
+mypy by_reach
+pytest -q
 ```
 
-## Adding New Channels
+## Routing changes
 
-Agent Reach uses a unified channel interface. To add a new platform:
+Keep executor order declarative in `by_reach/executor_policy.py` and cover new
+behavior with tests. Generic website reads are terminal byCLI operations:
 
-1. Create a new file in `agent_reach/channels/`
-2. Implement the channel contract (see existing channels for examples)
-3. Add tests in `tests/test_channels.py`
-4. Update `agent_reach/doctor.py` to include the new channel
-5. Update documentation
+```bash
+bycli web read --url "URL" --stdout
+```
 
-## Pull Request Guidelines
+Do not introduce an alternate generic webpage reader, a direct-HTTP retry, or
+a legacy executor alias. A source-specific primary may fall back once to the
+declared byCLI capability only when its result fails validation.
 
-- **Small, focused changes** are preferred over large refactors
-- Include tests for new functionality
-- Update documentation if needed
-- Follow existing code style
-- Reference any related issues
+## Pull requests
 
-## Reporting Issues
-
-When reporting bugs, please include:
-
-- Python version
-- Operating system
-- Steps to reproduce
-- Expected vs actual behavior
-- Any error messages
-
-## Questions?
-
-Feel free to open an issue for questions or join discussions.
-
----
-
-感谢您对 Agent Reach 的贡献！本文档提供了贡献指南。
-
-## 快速开始
-
-1. 在 GitHub 上 fork 仓库
-2. 本地 clone 您的 fork
-3. 创建新分支
-4. 提交更改
-5. 运行测试和 lint
-6. 提交 pull request
-
-## 代码规范
-
-- 使用 **ruff** 进行代码检查
-- 使用 **mypy** 进行类型检查
-- 使用 **pytest** 运行测试
-
-## 添加新渠道
-
-1. 在 `agent_reach/channels/` 创建新文件
-2. 实现渠道接口
-3. 添加测试
-4. 更新 doctor 检测
-5. 更新文档
+- Keep changes focused and include tests for behavior changes.
+- Update user-facing docs when public behavior changes.
+- Never add secrets, cookies, tokens, or private endpoints.
+- Preserve the MIT license and upstream attribution.

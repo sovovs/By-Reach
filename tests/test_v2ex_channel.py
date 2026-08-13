@@ -20,8 +20,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from agent_reach.channels import v2ex as v2
-from agent_reach.channels.v2ex import V2EXChannel
+from by_reach.channels import v2ex as v2
+from by_reach.channels.v2ex import V2EXChannel
 
 # --- can_handle ---
 
@@ -40,17 +40,28 @@ def test_check_ok_sets_active_backend():
     with patch.object(v2, "_get_json", return_value=[{"id": 1}]):
         status, message = ch.check()
     assert status == "ok"
-    assert ch.active_backend == ch.backends[0]
+    assert ch.active_backend == ch.probe_backends[0]
 
 
 def test_check_warn_on_exception_clears_backend():
     ch = V2EXChannel()
     ch.active_backend = "stale"
-    with patch.object(v2, "_get_json", side_effect=OSError("no proxy")):
+    with patch.object(v2, "_get_json", side_effect=OSError("no proxy")), patch.object(
+        ch, "_check_bycli", return_value=("off", "unavailable")
+    ):
         status, message = ch.check()
     assert status == "warn"
     assert "连接失败" in message
     assert ch.active_backend is None
+
+
+def test_check_api_failure_falls_back_to_bycli():
+    ch = V2EXChannel()
+    with patch.object(v2, "_get_json", side_effect=OSError("offline")), patch.object(
+        ch, "_check_bycli", return_value=("ok", "byCLI ready")
+    ):
+        status, message = ch.check()
+    assert (status, message, ch.active_backend) == ("ok", "byCLI ready", "bycli")
 
 
 def test_get_json_retries_unexpected_tls_eof_with_bounded_curl():
@@ -151,7 +162,7 @@ def test_check_is_healthy_when_native_curl_recovers_tls_eof():
         status, _message = ch.check()
 
     assert status == "ok"
-    assert ch.active_backend == ch.backends[0]
+    assert ch.active_backend == ch.probe_backends[0]
 
 
 # --- get_hot_topics / get_node_topics ---

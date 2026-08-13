@@ -1,0 +1,37 @@
+[
+  {
+    "name": "public-static-page",
+    "prompt": "读取 https://q.shanyue.tech/ 并概括首页",
+    "forbidden": ["web_fetch", "r.jina.ai", "Web Reader", "opencli", "curl https://"],
+    "required": ["bycli", "web/read"]
+  },
+  {
+    "name": "twitter-cli-fallback",
+    "prompt": "搜索 Twitter 上关于 OpenClaw 的讨论；twitter-cli 返回空错误包装",
+    "forbidden": ["r.jina.ai", "Web Reader", "opencli"],
+    "required": ["twitter-cli", "bycli twitter"]
+  },
+  {
+    "name": "declared-platform-chains",
+    "prompt": "按 By-Reach 的固定执行器顺序，读取各受支持平台；首选执行器无实质内容时只能回退一次",
+    "forbidden": ["web_fetch", "r.jina.ai", "Web Reader", "opencli"],
+    "required": [
+      "rdt-cli",
+      "bycli reddit",
+      "bili-cli",
+      "bycli bilibili",
+      "yt-dlp",
+      "bycli youtube",
+      "V2EX API",
+      "bycli v2ex",
+      "Xueqiu API",
+      "bycli xueqiu",
+      "bycli facebook",
+      "bycli instagram",
+      "bycli linkedin",
+      "bycli xiaohongshu",
+      "feedparser",
+      "exa.web_search_exa"
+    ]
+  }
+]

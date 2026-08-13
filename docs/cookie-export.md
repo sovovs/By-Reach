@@ -1,58 +1,33 @@
-# Cookie Export Guide — For Server Users
+# Cookie export
 
-Your Agent is on a server and can't access your browser directly.
-Here's how to export cookies from your local computer — **fastest method first**.
+Only handle credentials the user deliberately exports and supplies. By-Reach
+does not sign users in, inspect browser profiles, or inject a browser session.
 
-## Method 1: Cookie-Editor Extension (Recommended — 30 seconds per site)
+For Twitter, the user may export a **Header String** with Cookie-Editor and
+provide it to the hidden prompt:
 
-1. Install **Cookie-Editor** for Chrome: https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm
-   (Also available for Firefox, Edge)
-
-2. Go to the website (e.g. https://x.com) and make sure you're logged in
-
-3. Click the Cookie-Editor icon in your toolbar
-
-4. Click **Export** → **Header String**
-
-5. Paste the result to your Agent
-
-That's it! Your Agent will run:
 ```bash
-agent-reach configure twitter-cookies
-agent-reach configure xhs-cookies
+by-reach configure twitter-cookies
 ```
 
-Both commands use a hidden prompt. For non-interactive automation, send the
-same exported value through stdin and add `--stdin`; never place cookies in
-the process arguments.
+For non-interactive use, send the same value over standard input:
 
-Twitter values saved by Agent Reach are used by `agent-reach doctor` only to
-check whether explicit credentials are present. Doctor does not run
-`twitter status`. Direct `twitter` commands still require
-`TWITTER_AUTH_TOKEN` and `TWITTER_CT0` in their process environment.
+```bash
+printf '%s' "$EXPORTED_COOKIE_HEADER" | by-reach configure twitter-cookies --stdin
+```
 
-This XiaoHongShu export is for xiaohongshu-mcp or a legacy tool.
-`agent-reach configure xhs-cookies` does not inject cookies into OpenCLI or
-Chrome. OpenCLI may use only an existing Chrome session explicitly controlled
-by the user. Agent Reach never logs the user in or reads XiaoHongShu browser
-cookies.
+Do not put a cookie or token in a process argument, shell history, issue, or
+chat transcript. Configuration is stored under `~/.by-reach/` with owner-only
+permissions.
 
-### Sites to export:
+Twitter configuration is diagnostic metadata only. It does not modify the
+current shell. Direct upstream commands require explicit environment variables:
 
-| Site | URL to visit | What to tell Agent |
-|------|-------------|-------------------|
-| Twitter/X | https://x.com | "Here are my Twitter cookies: [paste]" |
-| XiaoHongShu | https://www.xiaohongshu.com | "Here are my XHS cookies: [paste]" |
-| Bilibili | https://www.bilibili.com | "Here are my Bilibili cookies: [paste]" |
+```bash
+export TWITTER_AUTH_TOKEN="..."
+export TWITTER_CT0="..."
+twitter search "query" -n 10
+```
 
-## Method 2: Manual (No extension needed)
-
-1. Open the site in Chrome, make sure you're logged in
-2. Press **F12** (or right-click → Inspect)
-3. Click the **Network** tab
-4. Refresh the page (F5)
-5. Click any request in the list
-6. In the right panel, scroll to **Request Headers**
-7. Find the line starting with `Cookie:`
-8. Copy the entire value after `Cookie: `
-9. Paste to your Agent
+For byCLI-backed website routes, an existing session may be used only when the
+user explicitly established and authorized it for the requested read-only task.

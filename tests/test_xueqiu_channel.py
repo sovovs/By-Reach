@@ -17,8 +17,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from agent_reach.channels import xueqiu as xq
-from agent_reach.channels.xueqiu import XueqiuChannel, _strip_html
+from by_reach.channels import xueqiu as xq
+from by_reach.channels.xueqiu import XueqiuChannel, _strip_html
 
 # --- can_handle ---
 
@@ -52,7 +52,7 @@ def test_check_validates_detail_quote_endpoint():
         status, message = ch.check()
 
     assert status == "ok"
-    assert ch.active_backend == ch.backends[0]
+    assert ch.active_backend == ch.probe_backends[0]
     assert requested == [
         "https://stock.xueqiu.com/v5/stock/quote.json"
         "?symbol=SH601138&extend=detail"
@@ -61,17 +61,30 @@ def test_check_validates_detail_quote_endpoint():
 
 def test_check_warn_when_quote_empty():
     ch = XueqiuChannel()
-    with patch.object(xq, "_get_json", return_value={"data": {"quote": {}}}):
+    with patch.object(xq, "_get_json", return_value={"data": {"quote": {}}}), patch.object(
+        ch, "_check_bycli", return_value=("off", "unavailable")
+    ):
         status, message = ch.check()
     assert status == "warn"
     assert "为空" in message
     assert ch.active_backend is None
 
 
+def test_check_empty_quote_falls_back_to_bycli():
+    ch = XueqiuChannel()
+    with patch.object(xq, "_get_json", return_value={"data": {"quote": {}}}), patch.object(
+        ch, "_check_bycli", return_value=("ok", "byCLI ready")
+    ):
+        status, message = ch.check()
+    assert (status, message, ch.active_backend) == ("ok", "byCLI ready", "bycli")
+
+
 def test_check_warn_on_exception():
     import urllib.error
     ch = XueqiuChannel()
-    with patch.object(xq, "_get_json", side_effect=urllib.error.URLError("refused")):
+    with patch.object(xq, "_get_json", side_effect=urllib.error.URLError("refused")), patch.object(
+        ch, "_check_bycli", return_value=("off", "unavailable")
+    ):
         status, message = ch.check()
     assert status == "warn"
     assert "连接失败" in message

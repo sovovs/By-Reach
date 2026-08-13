@@ -6,6 +6,30 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.0.0b1] - 2026-08-13
+
+### Breaking changes
+
+- Renamed the public package, CLI, import, persistent configuration, and Skill
+  to By-Reach: `by-reach`, `by_reach`, `~/.by-reach/`, and `by-reach`.
+- Generic webpage acquisition is now terminally routed to byCLI
+  `web/read`; there is no alternate generic webpage fallback.
+- Source-specific primary executors may use only their declared single byCLI
+  fallback after failure or invalid content.
+
+### Security and diagnostics
+
+- Generic URL reads validate the initial public HTTP(S) target before invoking
+  byCLI; browser navigation controls remain the byCLI boundary.
+- Added bounded, shell-free executor runtime validation and explicit policy
+  reporting.
+
+> Entries below describe historical pre-2.0 releases from the upstream project;
+> they are retained for attribution and release history, not as current routing
+> guidance.
+
+---
+
 ## [1.3.1] - 2026-03-27
 
 ### 🐛 Bug Fixes / 修复

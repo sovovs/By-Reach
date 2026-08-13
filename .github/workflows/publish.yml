@@ -1,0 +1,167 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify the release tag points to current main
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          git fetch origin main
+          tag_commit="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          main_commit="$(git rev-parse origin/main)"
+          test "$tag_commit" = "$main_commit"
+
+      - name: Run the full test suite
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -c constraints.txt -e ".[dev]"
+          pytest -q
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade build twine
+          rm -rf dist
+          python -m build
+          twine check dist/*
+
+      - name: Verify distribution metadata and contents
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import glob
+          import os
+          import tarfile
+          from collections import Counter
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          distributions = [Path(name) for name in glob.glob("dist/*")]
+          wheels = [path for path in distributions if path.suffix == ".whl"]
+          sdists = [path for path in distributions if path.name.endswith(".tar.gz")]
+          assert len(distributions) == 2, distributions
+          assert len(wheels) == 1, wheels
+          assert len(sdists) == 1, sdists
+
+          def fields_from_metadata(metadata: str) -> dict[str, str]:
+              return dict(
+                  line.split(": ", 1)
+                  for line in metadata.splitlines()
+                  if line.startswith(("Name: ", "Version: "))
+              )
+
+          with ZipFile(wheels[0]) as archive:
+              names = archive.namelist()
+              duplicates = [name for name, count in Counter(names).items() if count > 1]
+              assert not duplicates, duplicates
+              assert "by_reach/skill/SKILL.md" in names
+              for prefix in (
+                  "by_reach/guides/",
+                  "by_reach/scripts/",
+                  "by_reach/skill/references/",
+              ):
+                  assert any(name.startswith(prefix) for name in names), prefix
+              wheel_metadata = archive.read(
+                  next(name for name in names if name.endswith(".dist-info/METADATA"))
+              ).decode("utf-8")
+
+          with tarfile.open(sdists[0]) as archive:
+              sdist_metadata = archive.extractfile(
+                  next(member for member in archive.getmembers() if member.name.endswith("/PKG-INFO"))
+              )
+              assert sdist_metadata is not None
+              sdist_metadata_text = sdist_metadata.read().decode("utf-8")
+
+          for metadata in (wheel_metadata, sdist_metadata_text):
+              fields = fields_from_metadata(metadata)
+              assert fields["Name"] == "by-reach", fields
+              assert os.environ["GITHUB_REF_NAME"] == f"v{fields['Version']}", fields
+          print(f"verified by-reach {fields_from_metadata(wheel_metadata)['Version']}")
+          PY
+
+      - name: Smoke-install wheel and source distribution
+        run: |
+          for distribution in dist/*.whl dist/*.tar.gz; do
+            environment="/tmp/by-reach-release-smoke-$(basename "$distribution")"
+            python -m venv "$environment"
+            "$environment/bin/pip" install --quiet "$distribution"
+            "$environment/bin/by-reach" version
+            test ! -e "$environment/bin/agent-reach"
+            (
+              cd /tmp
+              "$environment/bin/python" -c "import importlib.util; import by_reach; from importlib.resources import files; assert importlib.util.find_spec('agent_reach') is None; assert (files('by_reach')/'skill'/'SKILL.md').is_file()"
+            )
+          done
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-prerelease:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download verified distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          release_args=(--verify-tag --generate-notes)
+          if [[ "$GITHUB_REF_NAME" == *b* ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${release_args[@]}" dist/*

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import socket
 import subprocess
 import sys
 from argparse import Namespace
@@ -12,7 +13,8 @@ from pathlib import Path
 
 import pytest
 
-import agent_reach.cli as cli
+import by_reach.cli as cli
+from by_reach.executor_runtime import ExecutionResult
 
 
 class _MemoryConfig:
@@ -27,10 +29,246 @@ class _MemoryConfig:
         self.data[key] = value
 
 
+def _bycli_manifest() -> str:
+    return json.dumps(
+        [{"command": "web/read", "access": "read", "site": "web"}]
+    )
+
+
+def _install_public_dns(monkeypatch):
+    monkeypatch.setattr(
+        "by_reach.utils.url.socket.getaddrinfo",
+        lambda _host, port, **_kwargs: [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("93.184.216.34", port),
+            )
+        ],
+    )
+
+
+def test_read_command_writes_markdown_to_stdout_without_decoration(
+    monkeypatch, capsys
+):
+    import by_reach.bycli as bycli
+
+    calls = []
+    results = iter(
+        [
+            ExecutionResult(0, _bycli_manifest(), ""),
+            ExecutionResult(0, "# Example\nbody\n", ""),
+        ]
+    )
+
+    def fake_run(args, timeout=None):
+        calls.append((list(args), timeout))
+        return next(results)
+
+    _install_public_dns(monkeypatch)
+    monkeypatch.setattr(bycli, "run_command", fake_run)
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "example.com/page"])
+
+    cli.main()
+
+    captured = capsys.readouterr()
+    assert captured.out == "# Example\nbody\n"
+    assert captured.err == ""
+    assert calls[-1][0] == [
+        "bycli",
+        "web",
+        "read",
+        "--url",
+        "https://example.com/page",
+        "--stdout",
+    ]
+
+
+def test_read_command_rejects_invalid_url_before_runner(monkeypatch, capsys):
+    import by_reach.bycli as bycli
+
+    calls = []
+    monkeypatch.setattr(
+        bycli,
+        "run_command",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "http://localhost/admin"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    assert calls == []
+    assert captured.out == ""
+    assert "public HTTP" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_read_command_bycli_failure_is_clean_nonzero_error(monkeypatch, capsys):
+    import by_reach.bycli as bycli
+
+    results = iter(
+        [
+            ExecutionResult(0, _bycli_manifest(), ""),
+            ExecutionResult(1, "", "browser unavailable"),
+        ]
+    )
+    _install_public_dns(monkeypatch)
+    monkeypatch.setattr(
+        bycli,
+        "run_command",
+        lambda _args, timeout=None: next(results),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    assert captured.out == ""
+    assert "browser unavailable" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_read_command_scrubs_credentials_from_errors(monkeypatch, capsys):
+    import by_reach.bycli as bycli
+
+    secret = "credential-secret"
+    results = iter(
+        [
+            ExecutionResult(0, _bycli_manifest(), ""),
+            ExecutionResult(
+                1,
+                "",
+                f"failed at https://user:pass@example.test/?token={secret}",
+            ),
+        ]
+    )
+    _install_public_dns(monkeypatch)
+    monkeypatch.setattr(
+        bycli,
+        "run_command",
+        lambda _args, timeout=None: next(results),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(SystemExit):
+        cli.main()
+
+    error = capsys.readouterr().err
+    assert "user:pass" not in error
+    assert secret not in error
+    assert "***" in error
+
+
+def test_read_command_scrubs_client_secret_from_bycli_error(monkeypatch, capsys):
+    import by_reach.bycli as bycli
+
+    results = iter(
+        [
+            ExecutionResult(0, _bycli_manifest(), ""),
+            ExecutionResult(
+                1,
+                "",
+                "browser unavailable https://example.test/?client_secret=TOPSECRET",
+            ),
+        ]
+    )
+    _install_public_dns(monkeypatch)
+    monkeypatch.setattr(
+        bycli,
+        "run_command",
+        lambda _args, timeout=None: next(results),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    assert "TOPSECRET" not in captured.out
+    assert "TOPSECRET" not in captured.err
+    assert "browser unavailable" in captured.err
+
+
+@pytest.mark.parametrize("exception", [KeyboardInterrupt(), SystemExit(7)])
+def test_read_command_does_not_catch_process_control_exceptions(
+    exception, monkeypatch
+):
+    from by_reach.channels.web import WebChannel
+
+    monkeypatch.setattr(
+        WebChannel,
+        "read",
+        lambda _self, _url: (_ for _ in ()).throw(exception),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(type(exception)) as raised:
+        cli.main()
+
+    if isinstance(exception, SystemExit):
+        assert raised.value.code == 7
+
+
+def test_read_command_hides_unexpected_exception_details(monkeypatch, capsys):
+    from by_reach.channels.web import WebChannel
+
+    class HostileError(RuntimeError):
+        def __str__(self):
+            raise AssertionError("unexpected exception must not be rendered")
+
+    monkeypatch.setattr(
+        WebChannel,
+        "read",
+        lambda _self, _url: (_ for _ in ()).throw(HostileError("TOPSECRET")),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    assert captured.out == ""
+    assert captured.err == "by-reach read: error: unexpected read failure\n"
+    assert "TOPSECRET" not in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_read_command_help_is_specific_and_has_no_agent_reach_alias(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "--help"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    output = capsys.readouterr().out
+    assert raised.value.code == 0
+    assert "Read a public webpage as Markdown through byCLI" in output
+    assert "Public HTTP(S) URL to read" in output
+    assert "agent-reach" not in output
+
+
 def test_configure_reads_secret_from_stdin_without_echoing_it(
     monkeypatch, capsys
 ):
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     secret = "gsk-secret-from-stdin"
     config = _MemoryConfig()
@@ -40,7 +278,7 @@ def test_configure_reads_secret_from_stdin_without_echoing_it(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["agent-reach", "configure", "groq-key", "--stdin"],
+        ["by-reach", "configure", "groq-key", "--stdin"],
     )
 
     cli.main()
@@ -56,7 +294,7 @@ def test_configure_uses_hidden_prompt_when_no_value_is_given(
 ):
     import getpass
 
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     class TtyInput(io.StringIO):
         def isatty(self):
@@ -71,7 +309,7 @@ def test_configure_uses_hidden_prompt_when_no_value_is_given(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["agent-reach", "configure", "openai-key"],
+        ["by-reach", "configure", "openai-key"],
     )
 
     cli.main()
@@ -86,14 +324,14 @@ def test_setup_uses_hidden_prompts_for_secrets(monkeypatch, capsys):
     import getpass
     import shutil
 
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     github_secret = "ghp-secret-from-setup"
     groq_secret = "gsk-secret-from-setup"
     secrets = iter([github_secret, groq_secret])
     prompts = []
     config = _MemoryConfig()
-    config.config_path = Path("/tmp/agent-reach-test-config.yaml")
+    config.config_path = Path("/tmp/by-reach-test-config.yaml")
 
     monkeypatch.setattr(config_module, "Config", lambda: config)
     monkeypatch.setattr(shutil, "which", lambda _name: None)
@@ -121,7 +359,7 @@ def test_setup_uses_hidden_prompts_for_secrets(monkeypatch, capsys):
 def test_configure_positional_secret_warns_to_use_safe_input(
     monkeypatch, capsys
 ):
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     config = _MemoryConfig()
     monkeypatch.setattr(config_module, "Config", lambda: config)
@@ -129,7 +367,7 @@ def test_configure_positional_secret_warns_to_use_safe_input(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["agent-reach", "configure", "groq-key", "legacy-secret"],
+        ["by-reach", "configure", "groq-key", "legacy-secret"],
     )
 
     cli.main()
@@ -153,7 +391,7 @@ def test_configure_rejects_stdin_combined_with_positional_value(
         sys,
         "argv",
         [
-            "agent-reach",
+            "by-reach",
             "configure",
             "groq-key",
             "legacy-secret",
@@ -170,8 +408,8 @@ def test_configure_rejects_stdin_combined_with_positional_value(
 
 def test_browser_cookie_import_requires_explicit_platform(monkeypatch):
     """A bare --from-browser must fail before any browser credential access."""
-    import agent_reach.config as config_module
-    import agent_reach.cookie_extract as cookie_extract
+    import by_reach.config as config_module
+    import by_reach.cookie_extract as cookie_extract
 
     monkeypatch.setattr(config_module, "Config", _MemoryConfig)
     monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
@@ -183,7 +421,7 @@ def test_browser_cookie_import_requires_explicit_platform(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["agent-reach", "configure", "--from-browser", "chrome"],
+        ["by-reach", "configure", "--from-browser", "chrome"],
     )
 
     with pytest.raises(SystemExit) as exc:
@@ -196,8 +434,8 @@ def test_browser_cookie_import_passes_explicit_platform_and_profile(
     monkeypatch, capsys
 ):
     """The CLI forwards an allowed minimal-cookie platform and exact profile."""
-    import agent_reach.config as config_module
-    import agent_reach.cookie_extract as cookie_extract
+    import by_reach.config as config_module
+    import by_reach.cookie_extract as cookie_extract
 
     captured = {}
 
@@ -212,7 +450,7 @@ def test_browser_cookie_import_passes_explicit_platform_and_profile(
         sys,
         "argv",
         [
-            "agent-reach",
+            "by-reach",
             "configure",
             "--from-browser",
             "chrome",
@@ -233,8 +471,8 @@ def test_browser_cookie_import_passes_explicit_platform_and_profile(
 
 def test_browser_cookie_import_without_cookie_exits_one(monkeypatch, capsys):
     """An unsuccessful browser import is a CLI failure, not a silent success."""
-    import agent_reach.config as config_module
-    import agent_reach.cookie_extract as cookie_extract
+    import by_reach.config as config_module
+    import by_reach.cookie_extract as cookie_extract
 
     monkeypatch.setattr(config_module, "Config", _MemoryConfig)
     monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
@@ -249,7 +487,7 @@ def test_browser_cookie_import_without_cookie_exits_one(monkeypatch, capsys):
         sys,
         "argv",
         [
-            "agent-reach",
+            "by-reach",
             "configure",
             "--from-browser",
             "chrome",
@@ -265,15 +503,11 @@ def test_browser_cookie_import_without_cookie_exits_one(monkeypatch, capsys):
     assert "No cookies found" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize(
-    ("platform", "manual_key"),
-    [("twitter", "twitter-cookies"), ("xiaohongshu", "xhs-cookies")],
-)
-def test_browser_cookie_import_rejects_cookie_editor_only_platforms(
-    monkeypatch, capsys, platform, manual_key
+def test_browser_cookie_import_rejects_twitter_before_opening_browser_store(
+    monkeypatch, capsys
 ):
-    """Twitter/XHS browser stores are never opened by the automatic importer."""
-    import agent_reach.cookie_extract as cookie_extract
+    """Twitter browser stores are never opened by the automatic importer."""
+    import by_reach.cookie_extract as cookie_extract
 
     monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
     monkeypatch.setattr(
@@ -285,12 +519,12 @@ def test_browser_cookie_import_rejects_cookie_editor_only_platforms(
         sys,
         "argv",
         [
-            "agent-reach",
+            "by-reach",
             "configure",
             "--from-browser",
             "chrome",
             "--platform",
-            platform,
+            "twitter",
         ],
     )
 
@@ -298,14 +532,40 @@ def test_browser_cookie_import_rejects_cookie_editor_only_platforms(
         cli.main()
 
     assert exc.value.code == 2
-    assert manual_key in capsys.readouterr().err
+    assert "twitter-cookies" in capsys.readouterr().err
+
+
+def test_browser_cookie_import_does_not_offer_xiaohongshu(
+    monkeypatch, capsys
+):
+    """XHS cookie extraction disappeared with the retired local runtime."""
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "by-reach",
+            "configure",
+            "--from-browser",
+            "chrome",
+            "--platform",
+            "xiaohongshu",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+
+    assert exc.value.code == 2
+    assert "xiaohongshu" in capsys.readouterr().err
 
 
 def test_install_does_not_implicitly_read_browser_cookies(monkeypatch, tmp_path, capsys):
     """Installing a cookie-backed channel prints an explicit command instead."""
-    import agent_reach.config as config_module
-    import agent_reach.cookie_extract as cookie_extract
+    import by_reach.config as config_module
+    import by_reach.cookie_extract as cookie_extract
 
+    calls = []
     monkeypatch.setattr(config_module, "Config", _MemoryConfig)
     monkeypatch.setattr(
         cli.os.path,
@@ -313,15 +573,20 @@ def test_install_does_not_implicitly_read_browser_cookies(monkeypatch, tmp_path,
         lambda value: value.replace("~", str(tmp_path)),
     )
     monkeypatch.setattr(cli, "_install_system_deps", lambda: None)
+    monkeypatch.setattr(
+        cli,
+        "_install_bycli_deps",
+        lambda: calls.append("bycli") or True,
+    )
     monkeypatch.setattr(cli, "_install_mcporter", lambda: None)
     monkeypatch.setattr(cli, "_install_twitter_deps", lambda: None)
     monkeypatch.setattr(cli, "_install_skill", lambda: None)
     monkeypatch.setattr(
-        "agent_reach.doctor.check_all",
+        "by_reach.doctor.check_all",
         lambda _config: {},
     )
     monkeypatch.setattr(
-        "agent_reach.doctor.format_report",
+        "by_reach.doctor.format_report",
         lambda _results: "report",
     )
     monkeypatch.setattr(
@@ -342,6 +607,7 @@ def test_install_does_not_implicitly_read_browser_cookies(monkeypatch, tmp_path,
     )
 
     output = capsys.readouterr().out
+    assert calls == ["bycli"]
     assert "configure twitter-cookies" in output
     assert "Importing cookies from browser" not in output
 
@@ -355,7 +621,7 @@ def test_install_rejects_safe_and_system_together(monkeypatch, capsys):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["agent-reach", "install", "--safe", "--system"],
+        ["by-reach", "install", "--safe", "--system"],
     )
 
     with pytest.raises(SystemExit) as exc:
@@ -369,7 +635,7 @@ def test_install_rejects_unknown_channel_before_side_effects(
     monkeypatch, capsys
 ):
     """A typo in --channels fails before config or system installation starts."""
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
     monkeypatch.setattr(
@@ -395,7 +661,7 @@ def test_install_rejects_unknown_channel_before_side_effects(
         sys,
         "argv",
         [
-            "agent-reach",
+            "by-reach",
             "install",
             "--env",
             "local",
@@ -418,8 +684,8 @@ def test_manual_twitter_cookie_legacy_copies_are_opt_in(
     """The source-of-truth config is always written; legacy copies are optional."""
     import shutil
 
-    import agent_reach.config as config_module
-    import agent_reach.cookie_extract as cookie_extract
+    import by_reach.config as config_module
+    import by_reach.cookie_extract as cookie_extract
 
     calls = []
     config = _MemoryConfig()
@@ -471,8 +737,8 @@ def test_legacy_twitter_sync_reports_only_confirmed_results(
 ):
     import shutil
 
-    import agent_reach.config as config_module
-    import agent_reach.cookie_extract as cookie_extract
+    import by_reach.config as config_module
+    import by_reach.cookie_extract as cookie_extract
 
     monkeypatch.setattr(config_module, "Config", _MemoryConfig)
     monkeypatch.setattr(shutil, "which", lambda _name: None)
@@ -506,7 +772,7 @@ def test_twitter_configure_never_runs_upstream_browser_fallback(
 ):
     import shutil
 
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     monkeypatch.setattr(config_module, "Config", _MemoryConfig)
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/twitter")
@@ -535,11 +801,11 @@ def test_twitter_configure_never_runs_upstream_browser_fallback(
 
 def test_doctor_never_installs_or_updates_skill(monkeypatch, capsys):
     """A diagnostic command is read-only and must not mutate agent instructions."""
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     monkeypatch.setattr(config_module, "Config", _MemoryConfig)
-    monkeypatch.setattr("agent_reach.doctor.check_all", lambda _config: {})
-    monkeypatch.setattr("agent_reach.doctor.format_report", lambda _results: "report")
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.format_report", lambda _results: "report")
     monkeypatch.setattr(
         cli,
         "_install_skill",
@@ -553,7 +819,7 @@ def test_doctor_never_installs_or_updates_skill(monkeypatch, capsys):
 
 def test_watch_uses_read_only_config(monkeypatch, capsys):
     """Scheduled diagnostics must enforce the same no-write boundary as doctor."""
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     created = []
 
@@ -571,15 +837,17 @@ def test_watch_uses_read_only_config(monkeypatch, capsys):
 
     monkeypatch.setattr(config_module, "Config", RecordingConfig)
     monkeypatch.setattr(
-        "agent_reach.doctor.check_all",
+        "by_reach.doctor.check_all",
         lambda _config: {
             "web": {
                 "status": "ok",
                 "name": "网页",
                 "message": "可用",
                 "tier": 0,
-                "backends": ["Jina Reader"],
-                "active_backend": "Jina Reader",
+                "backends": ["bycli"],
+                "active_backend": None,
+                "active_probe_backend": "Jina Reader",
+                "probe_status": "ok",
             }
         },
     )
@@ -596,108 +864,13 @@ def test_watch_uses_read_only_config(monkeypatch, capsys):
     assert "全部正常" in capsys.readouterr().out
 
 
-def _docker_result(args, returncode=0, stdout="", stderr=""):
-    return subprocess.CompletedProcess(args, returncode, stdout, stderr)
-
-
-def test_xhs_docker_cookie_copy_succeeds_without_local_os_binding_error(
-    monkeypatch, capsys
-):
-    """The Docker branch must be able to unlink its temporary file."""
-    calls = []
-
-    def fake_which(name):
-        if name == "docker":
-            return "/usr/bin/docker"
-        return None
-
-    def fake_run(args, **_kwargs):
-        calls.append(args)
-        if args[1] == "ps":
-            return _docker_result(args, stdout="xiaohongshu-mcp\n")
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return _docker_result(args, stdout="/app/data/cookies.json\n")
-        return _docker_result(args)
-
-    monkeypatch.setattr("shutil.which", fake_which)
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    cli._configure_xhs_cookies("web_session=xhs_secret")
-
-    output = capsys.readouterr().out
-    assert "Cookies written to xiaohongshu-mcp:/app/data/cookies.json" in output
-    assert "cannot access local variable 'os'" not in output
-    assert any(call[1] == "cp" for call in calls)
-
-
-def test_xhs_docker_cookie_copy_always_removes_temporary_file(monkeypatch, capsys):
-    """Failed docker cp must not leave a plaintext cookie file behind."""
-    copied_from = []
-
-    def fake_which(name):
-        if name == "docker":
-            return "/usr/bin/docker"
-        return None
-
-    def fake_run(args, **_kwargs):
-        if args[1] == "ps":
-            return _docker_result(args, stdout="xiaohongshu-mcp\n")
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return _docker_result(args, stdout="/app/data/cookies.json\n")
-        if args[1] == "cp":
-            copied_from.append(args[2])
-            return _docker_result(args, returncode=1, stderr="copy failed")
-        return _docker_result(args)
-
-    monkeypatch.setattr("shutil.which", fake_which)
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    cli._configure_xhs_cookies("web_session=xhs_secret")
-
-    assert copied_from
-    assert not Path(copied_from[0]).exists()
-    assert "Failed to copy cookies: copy failed" in capsys.readouterr().out
-
-
-def test_xhs_docker_restart_failure_returns_failure(monkeypatch, capsys):
-    """Cookies are not active until the container successfully restarts."""
-
-    def fake_which(name):
-        return "/usr/bin/docker" if name == "docker" else None
-
-    def fake_run(args, **_kwargs):
-        if args[1] == "ps":
-            return _docker_result(args, stdout="xiaohongshu-mcp\n")
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return _docker_result(args, stdout="/app/data/cookies.json\n")
-        if args[1] == "restart":
-            return _docker_result(
-                args,
-                returncode=1,
-                stderr="no such container",
-            )
-        return _docker_result(args)
-
-    monkeypatch.setattr("shutil.which", fake_which)
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    result = cli._configure_xhs_cookies("web_session=xhs_secret")
-
-    output = capsys.readouterr().out
-    assert result is False
-    assert "Could not restart container" in output
-    assert "no such container" in output
-    assert "Restart manually" in output
-    assert "done" not in output
-
-
 def test_system_install_uses_ytdlp_first_user_config(
     monkeypatch, tmp_path
 ):
     """Installer writes the first config directory that real yt-dlp reads."""
     import shutil
 
-    import agent_reach.utils.paths as paths
+    import by_reach.utils.paths as paths
 
     monkeypatch.setattr(paths.Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.delenv("XDG_CONFIG_HOME")
@@ -969,7 +1142,7 @@ def test_system_install_never_writes_unsupported_ytdlp_flag(
     """A missing, old, or unknown yt-dlp must not receive a fatal option."""
     import shutil
 
-    import agent_reach.utils.paths as paths
+    import by_reach.utils.paths as paths
 
     monkeypatch.setattr(paths.sys, "platform", "darwin")
     monkeypatch.setattr(paths.Path, "home", classmethod(lambda cls: tmp_path))
@@ -1131,19 +1304,26 @@ def test_mcporter_install_uses_resolved_windows_command_paths(monkeypatch):
     ]
 
 
-def test_server_xhs_install_never_recommends_qr_or_browser_extraction(
+def test_xhs_install_uses_core_bycli_without_browser_or_legacy_installers(
     monkeypatch, capsys
 ):
-    """Project policy requires an explicit Cookie-Editor export for XHS."""
-    monkeypatch.setattr(cli, "_detect_environment", lambda: "server")
+    calls = []
+    monkeypatch.setattr(cli, "_install_system_deps", lambda: calls.append("core") or True)
+    monkeypatch.setattr(cli, "_install_mcporter", lambda: True)
+    monkeypatch.setattr(cli, "_install_bycli_deps", lambda: calls.append("bycli") or True)
+    monkeypatch.setattr(cli, "_install_skill", lambda: True)
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.format_report", lambda _results: "report")
 
-    cli._install_xhs_deps()
+    cli._cmd_install(
+        Namespace(env="server", proxy="", system=True, safe=False, dry_run=False, channels="xiaohongshu")
+    )
 
     output = capsys.readouterr().out
-    assert "Cookie-Editor" in output
-    assert "configure xhs-cookies" in output
+    assert calls == ["core", "bycli"]
     assert "扫码" not in output
     assert "二维码" not in output
+    assert "浏览器" not in output
 
 
 def test_configure_usage_does_not_recommend_blocked_twitter_browser_import(
@@ -1165,14 +1345,14 @@ def test_configure_usage_does_not_recommend_blocked_twitter_browser_import(
 
 def test_configure_missing_value_exits_one(monkeypatch, capsys):
     """A selected config key without a value must fail at the CLI boundary."""
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     monkeypatch.setattr(config_module, "Config", _MemoryConfig)
     monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
     monkeypatch.setattr(
         sys,
         "argv",
-        ["agent-reach", "configure", "github-token"],
+        ["by-reach", "configure", "github-token"],
     )
 
     with pytest.raises(SystemExit) as exc:
@@ -1184,7 +1364,7 @@ def test_configure_missing_value_exits_one(monkeypatch, capsys):
 
 def test_twitter_cookie_parse_failure_exits_one(monkeypatch, capsys):
     """Malformed Twitter cookie input must not produce a successful CLI status."""
-    import agent_reach.config as config_module
+    import by_reach.config as config_module
 
     config = _MemoryConfig()
     monkeypatch.setattr(config_module, "Config", lambda: config)
@@ -1192,7 +1372,7 @@ def test_twitter_cookie_parse_failure_exits_one(monkeypatch, capsys):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["agent-reach", "configure", "twitter-cookies", "not-a-cookie"],
+        ["by-reach", "configure", "twitter-cookies", "not-a-cookie"],
     )
 
     with pytest.raises(SystemExit) as exc:
@@ -1206,7 +1386,7 @@ def test_twitter_cookie_parse_failure_exits_one(monkeypatch, capsys):
 def test_profile_rejects_unsupported_browser_before_cookie_backend(
     monkeypatch, capsys
 ):
-    import agent_reach.cookie_extract as cookie_extract
+    import by_reach.cookie_extract as cookie_extract
 
     monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
     monkeypatch.setattr(
@@ -1220,7 +1400,7 @@ def test_profile_rejects_unsupported_browser_before_cookie_backend(
         sys,
         "argv",
         [
-            "agent-reach",
+            "by-reach",
             "configure",
             "--from-browser",
             "firefox",
@@ -1241,8 +1421,8 @@ def test_profile_rejects_unsupported_browser_before_cookie_backend(
 def test_missing_profile_is_clean_cli_error_without_traceback(
     monkeypatch, capsys
 ):
-    import agent_reach.config as config_module
-    import agent_reach.cookie_extract as cookie_extract
+    import by_reach.config as config_module
+    import by_reach.cookie_extract as cookie_extract
 
     monkeypatch.setattr(config_module, "Config", _MemoryConfig)
     monkeypatch.setattr(
@@ -1276,7 +1456,7 @@ def test_missing_profile_is_clean_cli_error_without_traceback(
     assert "***" in error
 
 
-def test_install_dry_run_does_not_create_agent_reach_directory(
+def test_install_dry_run_does_not_create_by_reach_directory(
     isolated_home, monkeypatch
 ):
     monkeypatch.setattr(cli, "_install_system_deps_dryrun", lambda: None)
@@ -1292,7 +1472,7 @@ def test_install_dry_run_does_not_create_agent_reach_directory(
         )
     )
 
-    assert not (isolated_home / ".agent-reach").exists()
+    assert not (isolated_home / ".by-reach").exists()
 
 
 def test_uninstall_warns_about_opt_in_legacy_credential_copies(
@@ -1315,10 +1495,10 @@ def test_uninstall_warns_about_opt_in_legacy_credential_copies(
     assert bird.exists()
 
 
-def test_uninstall_preserves_mcporter_entries_without_agent_reach_provenance(
+def test_uninstall_preserves_mcporter_entries_without_by_reach_provenance(
     isolated_home, monkeypatch, capsys
 ):
-    """Names and endpoints alone do not prove Agent Reach owns an MCP entry."""
+    """Names and endpoints alone do not prove By-Reach owns an MCP entry."""
     calls = []
     payload = {
         "servers": [
@@ -1357,3 +1537,5 @@ def test_uninstall_preserves_mcporter_entries_without_agent_reach_provenance(
     output = capsys.readouterr().out
     assert not any("remove" in call for call in calls)
     assert "来源无法证明" in output
+def _docker_result(args, returncode=0, stdout="", stderr=""):
+    return subprocess.CompletedProcess(args, returncode, stdout, stderr)

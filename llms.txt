@@ -1,32 +1,33 @@
-# Agent Reach
+# By-Reach
 
-> Give your AI agent eyes to see the internet. Agent Reach installs, routes, and health-checks upstream tools for 15 platforms — Twitter/X, Reddit, Facebook, Instagram, YouTube, GitHub, Bilibili, XiaoHongShu, LinkedIn, V2EX, Xueqiu, Xiaoyuzhou Podcast, RSS, web search, and any web page. One install, zero API fees.
+By-Reach is an AI-agent routing and diagnostic package. Install with
+`pipx install by-reach`; its Python import is `by_reach`, CLI is `by-reach`,
+and persistent state is `~/.by-reach/`.
 
-## Quick Start
+## Mandatory generic webpage route
 
-- [Installation Guide](https://github.com/Panniantong/Agent-Reach/blob/main/docs/install.md): Step-by-step setup instructions for AI agents
-- [README (中文)](https://github.com/Panniantong/Agent-Reach/blob/main/README.md): Full documentation in Chinese
-- [README (English)](https://github.com/Panniantong/Agent-Reach/blob/main/docs/README_en.md): Full documentation in English
+For any website, webpage, article, static page, SPA, raw URL, or URL whose
+content must be read, run exactly:
 
-## Core Commands
+```bash
+bycli web read --url "URL" --stdout
+```
 
-- [CLI Usage](https://github.com/Panniantong/Agent-Reach/blob/main/docs/install.md): `agent-reach doctor --json` shows the active backend; agents then call upstream tools directly (`opencli`, `twitter`, `bili`, `yt-dlp`, `gh`, `mcporter`, etc.).
+Do not obtain content through any other generic webpage mechanism before or
+after this command. If byCLI fails, stop and report the failure.
 
-## Key Features
+## Source routes
 
-- Read any URL: tweets, Reddit posts, Facebook pages/feed/groups, Instagram profiles/posts, YouTube videos (transcripts), GitHub repos, articles, XiaoHongShu notes, Bilibili videos, RSS feeds
-- Search/discover across platforms: Twitter/X, Reddit, Facebook, Instagram user search, GitHub, YouTube, Bilibili, XiaoHongShu, LinkedIn, V2EX, Xueqiu, Web (via Exa)
-- Self-diagnosis: `agent-reach doctor` checks what works and what needs setup
-- Auto-installs dependencies: `agent-reach install --env=auto`
-- Browser-session / cookie auth for platforms that require login (Twitter, Reddit, Facebook, Instagram, XiaoHongShu, Xueqiu)
-- Proxy support for platforms that block server IPs (Reddit, Twitter)
-- Zero API fees: all backends are free and open-source (OpenCLI, twitter-cli, rdt-cli, bili-cli, yt-dlp, Jina Reader, mcporter/Exa, etc.)
+- Twitter: `twitter-cli`, then one `bycli twitter search` fallback.
+- Reddit: `rdt-cli`, then one `bycli reddit search` fallback.
+- Bilibili: `bili-cli`, then one `bycli bilibili search` fallback.
+- YouTube: `yt-dlp`, then one `bycli youtube search` fallback.
+- V2EX/Xueqiu: packaged API route, then their declared byCLI fallback once.
+- Facebook, Instagram, LinkedIn, XiaoHongShu: byCLI only.
+- GitHub: `gh`; RSS: `feedparser`; Exa: `mcporter` + `exa.web_search_exa`.
 
-## Troubleshooting
+Do not automate sign-in or read/inject browser cookies. A direct Twitter CLI
+command requires `TWITTER_AUTH_TOKEN` and `TWITTER_CT0` in its process
+environment.
 
-- [Troubleshooting Guide](https://github.com/Panniantong/Agent-Reach/blob/main/docs/troubleshooting.md): Common issues and solutions
-
-## Optional
-
-- [SKILL.md](https://github.com/Panniantong/Agent-Reach/blob/main/agent_reach/skill/SKILL.md): Integration guide for AI agent frameworks (OpenClaw, Claude Code, etc.)
-- [PyPI Package](https://pypi.org/project/agent-reach/): `pip install agent-reach`
+Documentation: https://github.com/sovovs/By-Reach/tree/main/docs

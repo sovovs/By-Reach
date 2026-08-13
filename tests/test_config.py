@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Tests for Agent Reach config module."""
+"""Tests for By-Reach config module."""
 
 import pytest
 
-from agent_reach.config import Config, ConfigReadOnlyError, ConfigSecurityError
+from by_reach.config import Config, ConfigReadOnlyError, ConfigSecurityError
 
 
 @pytest.fixture
@@ -14,6 +14,14 @@ def tmp_config(tmp_path):
 
 
 class TestConfig:
+    def test_default_config_dir_uses_only_by_reach_identity(self, isolated_home):
+        config = Config()
+        config.set("test_key", "test_value")
+
+        assert Config.CONFIG_DIR == isolated_home / ".by-reach"
+        assert (isolated_home / ".by-reach").is_dir()
+        assert not (isolated_home / ".agent-reach").exists()
+
     def test_init_is_read_only_on_disk_until_first_save(self, tmp_path):
         config_file = tmp_path / "subdir" / "config.yaml"
         Config(config_path=config_file)
@@ -248,7 +256,7 @@ class TestConfig:
             Config(config_path=config_file)
 
     def test_config_load_is_bounded(self, tmp_path, monkeypatch):
-        import agent_reach.config as config_module
+        import by_reach.config as config_module
 
         config_file = tmp_path / "config.yaml"
         config_file.write_text("secret: too-long\n", encoding="utf-8")
@@ -268,7 +276,7 @@ class TestConfig:
         def fail_dump(*args, **kwargs):
             raise RuntimeError("simulated write failure")
 
-        monkeypatch.setattr("agent_reach.config.yaml.safe_dump", fail_dump)
+        monkeypatch.setattr("by_reach.config.yaml.safe_dump", fail_dump)
         with pytest.raises(RuntimeError, match="simulated"):
             config.set("new_key", "new_value")
 
@@ -290,7 +298,7 @@ class TestConfig:
             observed["dir"] = kwargs.get("dir")
             return real_mkstemp(*args, **kwargs)
 
-        monkeypatch.setattr("agent_reach.config.tempfile.mkstemp", spy_mkstemp)
+        monkeypatch.setattr("by_reach.config.tempfile.mkstemp", spy_mkstemp)
         config.set("key", "value")
 
         assert observed["dir"] == str(config_file.parent)

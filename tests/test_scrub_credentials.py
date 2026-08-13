@@ -5,12 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_reach import cookie_extract
-from agent_reach.channels import v2ex as v2ex_module
-from agent_reach.channels import xueqiu as xueqiu_module
-from agent_reach.channels.v2ex import V2EXChannel
-from agent_reach.channels.xueqiu import XueqiuChannel
-from agent_reach.utils.text import scrub_url_credentials
+from by_reach import cookie_extract
+from by_reach.channels import v2ex as v2ex_module
+from by_reach.channels import xueqiu as xueqiu_module
+from by_reach.channels.v2ex import V2EXChannel
+from by_reach.channels.xueqiu import XueqiuChannel
+from by_reach.utils.text import scrub_url_credentials
 
 
 def test_scrubs_userinfo_and_sensitive_query_values():
@@ -45,6 +45,26 @@ def test_scrubs_multiple_schemes_and_fragment_tokens():
     )
 
 
+@pytest.mark.parametrize(
+    ("key", "rendered_key"),
+    [
+        ("client_secret", "client_secret"),
+        ("CLIENT-SECRET", "CLIENT-SECRET"),
+        ("client%5Fsecret", "client%5Fsecret"),
+        ("refresh_token", "refresh_token"),
+        ("id-token", "id-token"),
+    ],
+)
+def test_scrubs_oauth_secret_query_keys_case_insensitively(key, rendered_key):
+    scrubbed = scrub_url_credentials(
+        f"OAuth failed at https://example.test/callback?{key}=TOPSECRET&client_id=public-id"
+    )
+
+    assert "TOPSECRET" not in scrubbed
+    assert f"{rendered_key}=***" in scrubbed
+    assert "client_id=public-id" in scrubbed
+
+
 def test_scrubs_bare_user_password_host_diagnostics():
     raw = "proxy handshake for user:pass@proxy.test failed"
     assert scrub_url_credentials(raw) == "proxy handshake for ***@proxy.test failed"
@@ -62,7 +82,9 @@ def test_leaves_non_secret_urls_and_plain_text_unchanged():
         (xueqiu_module, XueqiuChannel()),
     ],
 )
-def test_channel_health_messages_scrub_url_secrets(module, channel, monkeypatch):
+def test_channel_health_api_failure_uses_secret_free_bycli_fallback(
+    module, channel, monkeypatch
+):
     def fail(_url, *_args, **_kwargs):
         raise RuntimeError(
             "proxy http://user:pass@proxy.test:8080 refused "
@@ -70,9 +92,46 @@ def test_channel_health_messages_scrub_url_secrets(module, channel, monkeypatch)
         )
 
     monkeypatch.setattr(module, "_get_json", fail)
+    monkeypatch.setattr(
+        channel,
+        "_check_bycli",
+        lambda: ("ok", "byCLI fallback ready"),
+    )
 
-    _status, message = channel.check()
+    status, message = channel.check()
 
+    assert (status, message, channel.active_backend) == (
+        "ok",
+        "byCLI fallback ready",
+        "bycli",
+    )
+    assert "user:pass" not in message
+    assert "top-secret" not in message
+
+
+@pytest.mark.parametrize(
+    ("module", "channel"),
+    [
+        (v2ex_module, V2EXChannel()),
+        (xueqiu_module, XueqiuChannel()),
+    ],
+)
+def test_channel_health_api_failure_scrubs_secrets_when_bycli_unavailable(
+    module, channel, monkeypatch
+):
+    def fail(_url, *_args, **_kwargs):
+        raise RuntimeError(
+            "proxy http://user:pass@proxy.test:8080 refused "
+            "https://api.test/data?access_token=top-secret"
+        )
+
+    monkeypatch.setattr(module, "_get_json", fail)
+    monkeypatch.setattr(channel, "_check_bycli", lambda: ("off", "unavailable"))
+
+    status, message = channel.check()
+
+    assert status == "warn"
+    assert channel.active_backend is None
     assert "user:pass" not in message
     assert "top-secret" not in message
     assert "***" in message

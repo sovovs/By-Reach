@@ -12,12 +12,12 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from agent_reach.cli import _cmd_uninstall, _install_skill, _uninstall_skill
+from by_reach.cli import _cmd_uninstall, _install_skill, _uninstall_skill
 
 
 def _frontmatter(resource_name: str) -> dict[str, object]:
     text = (
-        importlib.resources.files("agent_reach")
+        importlib.resources.files("by_reach")
         .joinpath("skill", resource_name)
         .read_text(encoding="utf-8")
     )
@@ -39,7 +39,7 @@ def test_skill_frontmatter_uses_opencode_supported_fields():
     for resource_name in ("SKILL.md", "SKILL_en.md"):
         frontmatter = _frontmatter(resource_name)
         assert set(frontmatter) <= allowed_fields, resource_name
-        assert frontmatter["name"] == "agent-reach", resource_name
+        assert frontmatter["name"] == "by-reach", resource_name
 
         description = frontmatter["description"]
         assert isinstance(description, str), resource_name
@@ -58,23 +58,23 @@ def test_install_skill_discovers_opencode_global_directory(tmp_path: Path):
     skill_parent.mkdir(parents=True)
 
     with patch(
-        "agent_reach.cli.os.path.expanduser",
+        "by_reach.cli.os.path.expanduser",
         side_effect=lambda value: value.replace("~", os.fspath(tmp_path)),
     ), patch.dict(os.environ, {}, clear=True):
         _install_skill()
 
-    installed = skill_parent / "agent-reach" / "SKILL.md"
+    installed = skill_parent / "by-reach" / "SKILL.md"
     assert installed.is_file()
-    assert "Agent Reach" in installed.read_text(encoding="utf-8")
+    assert "By-Reach" in installed.read_text(encoding="utf-8")
 
 
 def test_uninstall_skill_removes_opencode_global_directory(tmp_path: Path):
-    installed = tmp_path / ".config" / "opencode" / "skills" / "agent-reach"
+    installed = tmp_path / ".config" / "opencode" / "skills" / "by-reach"
     installed.mkdir(parents=True)
     (installed / "SKILL.md").write_text("test", encoding="utf-8")
 
     with patch(
-        "agent_reach.cli.os.path.expanduser",
+        "by_reach.cli.os.path.expanduser",
         side_effect=lambda value: value.replace("~", os.fspath(tmp_path)),
     ), patch.dict(os.environ, {}, clear=True):
         _uninstall_skill()
@@ -85,17 +85,17 @@ def test_uninstall_skill_removes_opencode_global_directory(tmp_path: Path):
 def test_full_uninstall_includes_opencode_directory(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):
-    installed = tmp_path / ".config" / "opencode" / "skills" / "agent-reach"
+    installed = tmp_path / ".config" / "opencode" / "skills" / "by-reach"
     installed.mkdir(parents=True)
 
     with patch(
-        "agent_reach.cli.os.path.expanduser",
+        "by_reach.cli.os.path.expanduser",
         side_effect=lambda value: os.fspath(
             tmp_path / value.removeprefix("~/")
         )
         if value.startswith("~/")
         else value,
-    ), patch("agent_reach.utils.paths.home_dir", return_value=tmp_path), patch(
+    ), patch("by_reach.utils.paths.home_dir", return_value=tmp_path), patch(
         "shutil.which", return_value=None
     ):
         _cmd_uninstall(SimpleNamespace(dry_run=True, keep_config=True))

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from agent_reach.channels.mcporter import (
+from by_reach.channels.mcporter import (
     McporterConfigError,
     configured_server_names,
     inspect_mcporter_config,

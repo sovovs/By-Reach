@@ -10,9 +10,9 @@ from argparse import Namespace
 
 import pytest
 
-from agent_reach import cli
-from agent_reach.cookie_extract import _sync_bird_env, _sync_xfetch_session
-from agent_reach.utils import paths
+from by_reach import cli
+from by_reach.cookie_extract import _sync_bird_env, _sync_xfetch_session
+from by_reach.utils import paths
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission semantics")
@@ -116,11 +116,9 @@ def test_credential_writes_honor_home_when_expanduser_disagrees(
 
     assert _sync_xfetch_session("auth", "ct0") is True
     assert _sync_bird_env("auth", "ct0") is True
-    assert cli._configure_xhs_cookies("web_session=xhs-secret") is True
-
     assert (intended_home / ".config" / "xfetch" / "session.json").exists()
     assert (intended_home / ".config" / "bird" / "credentials.env").exists()
-    assert (intended_home / ".agent-reach" / "xhs-cookies.json").exists()
+    assert not (intended_home / ".by-reach" / "xhs-cookies.json").exists()
     assert list(windows_profile.rglob("*")) == []
 
 
@@ -177,188 +175,12 @@ def test_legacy_bird_sync_refuses_target_symlink(tmp_path, monkeypatch):
     assert env_path.is_symlink()
 
 
-def test_xhs_cookie_editor_json_ignores_non_xhs_domains(
-    tmp_path, monkeypatch, capsys
-):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr("shutil.which", lambda name: None)
-    exported = [
-        {
-            "name": "web_session",
-            "value": "valid-root",
-            "domain": ".xiaohongshu.com",
-            "path": "/",
-        },
-        {
-            "name": "a1",
-            "value": "valid-subdomain",
-            "domain": "www.xiaohongshu.com",
-            "path": "/",
-        },
-        {
-            "name": "foreign",
-            "value": "must-not-persist",
-            "domain": ".example.com",
-            "path": "/",
-        },
-        {
-            "name": "lookalike",
-            "value": "must-not-persist",
-            "domain": ".notxiaohongshu.com",
-            "path": "/",
-        },
-    ]
-
-    cli._configure_xhs_cookies(json.dumps(exported))
-
-    cookie_path = tmp_path / ".agent-reach" / "xhs-cookies.json"
-    saved = json.loads(cookie_path.read_text(encoding="utf-8"))
-    assert [cookie["name"] for cookie in saved] == ["web_session", "a1"]
-    output = capsys.readouterr().out
-    assert "忽略" in output
-    assert "2" in output
-
-
-def test_xhs_cookie_editor_json_fails_without_valid_xhs_cookie(
-    tmp_path, monkeypatch, capsys
-):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(
-        "shutil.which",
-        lambda name: pytest.fail("invalid cookies must fail before tool lookup"),
-    )
-    exported = [
-        {
-            "name": "session",
-            "value": "foreign",
-            "domain": ".example.com",
-        },
-        {
-            "name": "lookalike",
-            "value": "foreign",
-            "domain": ".xiaohongshu.com.evil.test",
-        },
-    ]
-
-    monkeypatch.setattr("agent_reach.config.Config", lambda: object())
-    with pytest.raises(SystemExit) as exc:
-        cli._cmd_configure(
-            Namespace(
-                from_browser=None,
-                key="xhs-cookies",
-                value=[json.dumps(exported)],
-                sync_legacy_twitter=False,
-            )
-        )
-
-    assert exc.value.code == 1
-    assert not (tmp_path / ".agent-reach" / "xhs-cookies.json").exists()
-    output = capsys.readouterr().out
-    assert "没有有效的 xiaohongshu.com" in output
-
-
-def test_xhs_local_fallback_refuses_target_symlink(
-    tmp_path, monkeypatch, capsys
-):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr("shutil.which", lambda name: None)
-    cookie_path = tmp_path / ".agent-reach" / "xhs-cookies.json"
-    cookie_path.parent.mkdir()
-    victim = tmp_path / "victim.json"
-    victim.write_text('{"keep": "unchanged"}', encoding="utf-8")
-    try:
-        cookie_path.symlink_to(victim)
-    except OSError:
-        pytest.skip("symlinks are not supported on this platform")
-
-    result = cli._configure_xhs_cookies("web_session=xhs-secret")
-
-    assert result is False
-    assert victim.read_text(encoding="utf-8") == '{"keep": "unchanged"}'
-    assert cookie_path.is_symlink()
-    assert "Could not save cookies" in capsys.readouterr().out
-
-
-def test_xhs_docker_success_via_configure_command_does_not_exit(
-    monkeypatch, capsys
-):
-    monkeypatch.setattr("agent_reach.config.Config", lambda: object())
-    monkeypatch.setattr(
-        "shutil.which",
-        lambda name: "/usr/bin/docker" if name == "docker" else None,
-    )
-
-    def fake_run(args, **_kwargs):
-        if args[1] == "ps":
-            return subprocess.CompletedProcess(
-                args, 0, stdout="xiaohongshu-mcp\n", stderr=""
-            )
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return subprocess.CompletedProcess(
-                args, 0, stdout="/app/data/cookies.json\n", stderr=""
-            )
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    cli._cmd_configure(
-        Namespace(
-            from_browser=None,
-            key="xhs-cookies",
-            value=["web_session=xhs-secret"],
-            sync_legacy_twitter=False,
-        )
-    )
-
-    assert "Cookies written to" in capsys.readouterr().out
-
-
-def test_xhs_docker_failure_via_configure_command_exits_one(
-    monkeypatch, capsys
-):
-    monkeypatch.setattr("agent_reach.config.Config", lambda: object())
-    monkeypatch.setattr(
-        "shutil.which",
-        lambda name: "/usr/bin/docker" if name == "docker" else None,
-    )
-
-    def fake_run(args, **_kwargs):
-        if args[1] == "ps":
-            return subprocess.CompletedProcess(
-                args, 0, stdout="xiaohongshu-mcp\n", stderr=""
-            )
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return subprocess.CompletedProcess(
-                args, 0, stdout="/app/data/cookies.json\n", stderr=""
-            )
-        if args[1] == "cp":
-            return subprocess.CompletedProcess(
-                args, 1, stdout="", stderr="copy failed"
-            )
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    with pytest.raises(SystemExit) as exc:
-        cli._cmd_configure(
-            Namespace(
-                from_browser=None,
-                key="xhs-cookies",
-                value=["web_session=xhs-secret"],
-                sync_legacy_twitter=False,
-            )
-        )
-
-    assert exc.value.code == 1
-    assert "Failed to copy cookies" in capsys.readouterr().out
-
-
 def test_ytdlp_config_write_refuses_target_symlink(
     tmp_path, monkeypatch, capsys
 ):
     import shutil
 
-    import agent_reach.utils.paths as paths
+    import by_reach.utils.paths as paths
 
     monkeypatch.setattr(paths.sys, "platform", "darwin")
     monkeypatch.setattr(
@@ -402,7 +224,7 @@ def test_ytdlp_config_write_refuses_target_symlink(
 def test_transcribe_cli_scrubs_credentials_from_errors(
     monkeypatch, capsys
 ):
-    import agent_reach.transcribe as transcribe_module
+    import by_reach.transcribe as transcribe_module
 
     secret_url = (
         "https://alice:super-secret@example.test/audio"
@@ -441,11 +263,11 @@ def test_safe_install_with_proxy_makes_no_persistent_writes(
     monkeypatch.setattr(cli, "_install_system_deps_safe", lambda: None)
     monkeypatch.setattr(cli, "_install_mcporter_safe", lambda: None)
     monkeypatch.setattr(
-        "agent_reach.doctor.check_all",
+        "by_reach.doctor.check_all",
         lambda config: observed_configs.append(config) or {},
     )
     monkeypatch.setattr(
-        "agent_reach.doctor.format_report",
+        "by_reach.doctor.format_report",
         lambda _results: "report",
     )
     monkeypatch.setattr(
@@ -468,11 +290,11 @@ def test_safe_install_with_proxy_makes_no_persistent_writes(
     assert len(observed_configs) == 1
     assert observed_configs[0].read_only is True
     assert skill_calls == []
-    assert not (isolated_home / ".agent-reach").exists()
-    assert not (isolated_home / ".agent-reach" / "tools").exists()
-    assert not (isolated_home / ".openclaw" / "skills" / "agent-reach").exists()
-    assert not (isolated_home / ".claude" / "skills" / "agent-reach").exists()
-    assert not (isolated_home / ".agents" / "skills" / "agent-reach").exists()
+    assert not (isolated_home / ".by-reach").exists()
+    assert not (isolated_home / ".by-reach" / "tools").exists()
+    assert not (isolated_home / ".openclaw" / "skills" / "by-reach").exists()
+    assert not (isolated_home / ".claude" / "skills" / "by-reach").exists()
+    assert not (isolated_home / ".agents" / "skills" / "by-reach").exists()
     output = capsys.readouterr().out
     assert "SAFE MODE" in output
     assert "Would save network proxy" in output
@@ -496,20 +318,20 @@ def test_install_is_safe_by_default(isolated_home, monkeypatch, capsys):
         "_install_skill",
         lambda: pytest.fail("default install must not register agent skills"),
     )
-    monkeypatch.setattr("agent_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
     monkeypatch.setattr(
-        "agent_reach.doctor.format_report",
+        "by_reach.doctor.format_report",
         lambda _results: "report",
     )
     monkeypatch.setattr(
         cli.sys,
         "argv",
-        ["agent-reach", "install", "--env", "local"],
+        ["by-reach", "install", "--env", "local"],
     )
 
     cli.main()
 
-    assert not (isolated_home / ".agent-reach").exists()
+    assert not (isolated_home / ".by-reach").exists()
     output = capsys.readouterr().out
     assert "SAFE MODE" in output
     assert "No changes were made" in output
@@ -528,6 +350,11 @@ def test_install_system_flag_explicitly_enables_writes(
     )
     monkeypatch.setattr(
         cli,
+        "_install_bycli_deps",
+        lambda: calls.append("bycli") or True,
+    )
+    monkeypatch.setattr(
+        cli,
         "_install_mcporter",
         lambda: calls.append("mcporter"),
     )
@@ -536,21 +363,22 @@ def test_install_system_flag_explicitly_enables_writes(
         "_install_skill",
         lambda: calls.append("skill"),
     )
-    monkeypatch.setattr("agent_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
     monkeypatch.setattr(
-        "agent_reach.doctor.format_report",
+        "by_reach.doctor.format_report",
         lambda _results: "report",
     )
     monkeypatch.setattr(
         cli.sys,
         "argv",
-        ["agent-reach", "install", "--env", "local", "--system"],
+        ["by-reach", "install", "--env", "local", "--system"],
     )
 
     cli.main()
 
-    assert calls == ["system-deps", "mcporter", "skill"]
-    assert (isolated_home / ".agent-reach" / "tools").is_dir()
+    assert calls == ["system-deps", "bycli", "mcporter", "skill"]
+    assert (isolated_home / ".by-reach" / "tools").is_dir()
+    assert not (isolated_home / ".agent-reach").exists()
     assert "Installation complete" in capsys.readouterr().out
 
 
@@ -562,15 +390,15 @@ def test_install_system_exits_nonzero_when_core_steps_fail(
     monkeypatch.setattr(cli, "_install_system_deps", lambda: False)
     monkeypatch.setattr(cli, "_install_mcporter", lambda: False)
     monkeypatch.setattr(cli, "_install_skill", lambda: None)
-    monkeypatch.setattr("agent_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
     monkeypatch.setattr(
-        "agent_reach.doctor.format_report",
+        "by_reach.doctor.format_report",
         lambda _results: "report",
     )
     monkeypatch.setattr(
         cli.sys,
         "argv",
-        ["agent-reach", "install", "--env", "local", "--system"],
+        ["by-reach", "install", "--env", "local", "--system"],
     )
 
     with pytest.raises(SystemExit) as exc:
@@ -588,25 +416,44 @@ def test_install_system_exits_nonzero_when_requested_channel_fails(
     monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
     monkeypatch.setattr(cli, "_install_system_deps", lambda: True)
     monkeypatch.setattr(cli, "_install_mcporter", lambda: True)
-    monkeypatch.setattr(cli, "_install_opencli_deps", lambda: False)
+    monkeypatch.setattr(cli, "_install_bycli_deps", lambda: False)
     monkeypatch.setattr(cli, "_install_skill", lambda: True)
-    monkeypatch.setattr("agent_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
     monkeypatch.setattr(
-        "agent_reach.doctor.format_report",
+        "by_reach.doctor.format_report",
         lambda _results: "report",
     )
     monkeypatch.setattr(
         cli.sys,
         "argv",
         [
-            "agent-reach",
+            "by-reach",
             "install",
             "--env",
             "local",
             "--system",
-            "--channels=opencli",
+            "--channels=facebook",
         ],
     )
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+
+    assert exc.value.code == 1
+    assert "Installation incomplete" in capsys.readouterr().out
+
+
+def test_install_system_without_requested_channels_requires_bycli(
+    isolated_home, monkeypatch, capsys
+):
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(cli, "_install_system_deps", lambda: True)
+    monkeypatch.setattr(cli, "_install_bycli_deps", lambda: False)
+    monkeypatch.setattr(cli, "_install_mcporter", lambda: True)
+    monkeypatch.setattr(cli, "_install_skill", lambda: pytest.fail("skill install"))
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.format_report", lambda _results: "report")
+    monkeypatch.setattr(cli.sys, "argv", ["by-reach", "install", "--system"])
 
     with pytest.raises(SystemExit) as exc:
         cli.main()
@@ -622,15 +469,15 @@ def test_install_system_exits_nonzero_when_skill_install_fails(
     monkeypatch.setattr(cli, "_install_system_deps", lambda: True)
     monkeypatch.setattr(cli, "_install_mcporter", lambda: True)
     monkeypatch.setattr(cli, "_install_skill", lambda: False)
-    monkeypatch.setattr("agent_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
     monkeypatch.setattr(
-        "agent_reach.doctor.format_report",
+        "by_reach.doctor.format_report",
         lambda _results: "report",
     )
     monkeypatch.setattr(
         cli.sys,
         "argv",
-        ["agent-reach", "install", "--env", "local", "--system"],
+        ["by-reach", "install", "--env", "local", "--system"],
     )
 
     with pytest.raises(SystemExit) as exc:
