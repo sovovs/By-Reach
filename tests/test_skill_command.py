@@ -62,67 +62,59 @@ class TestSkillCommand(unittest.TestCase):
                 content = markdown_file.read_text(encoding="utf-8")
                 self.assertNotRegex(content, function_call)
 
-    def test_linkedin_reference_uses_current_tool_contract(self):
-        """LinkedIn examples should use the current server and parameters."""
+    def test_linkedin_reference_is_bycli_only(self):
+        """LinkedIn guidance must not reintroduce an MCP or legacy reader."""
         career_reference = (
             importlib.resources.files("by_reach")
             .joinpath("skill", "references", "career.md")
             .read_text(encoding="utf-8")
         )
 
-        self.assertIn(
-            "linkedin.get_person_profile "
-            'linkedin_username="username" '
-            'sections="experience,education"',
-            career_reference,
-        )
-        self.assertIn(
-            'linkedin.search_people keywords="AI engineer" '
-            'location="Shanghai"',
-            career_reference,
-        )
-        self.assertIn(
-            'linkedin.get_company_profile company_name="openai" '
-            'sections="posts,jobs"',
-            career_reference,
-        )
-        self.assertIn(
-            'linkedin.search_jobs keywords="software engineer" '
-            'location="Remote" max_pages=2',
-            career_reference,
-        )
-        self.assertNotIn("linkedin-scraper.", career_reference)
+        self.assertIn('bycli linkedin search "software engineer" --stdout', career_reference)
+        for legacy_route in (
+            "linkedin.get_",
+            "mcp-server-linkedin",
+            "linkedin-scraper",
+            "OpenCLI",
+            "Jina Reader",
+            "r.jina.ai",
+            "Web Reader",
+        ):
+            self.assertNotIn(legacy_route, career_reference)
 
-    def test_linkedin_install_docs_use_current_stdio_contract(self):
-        """LinkedIn install guidance should use uvx over stdio."""
+    def test_install_docs_describe_bycli_for_generic_webpages(self):
+        """Installation guidance must retain the byCLI-only webpage boundary."""
         install_doc = (
             Path(__file__).resolve().parents[1] / "docs" / "install.md"
         ).read_text(encoding="utf-8")
-        linkedin_section = install_doc.split(
-            "**LinkedIn (", maxsplit=1
-        )[1].split("### Step 4:", maxsplit=1)[0]
 
-        self.assertIn(
-            "uvx mcp-server-linkedin@latest --login",
-            linkedin_section,
-        )
-        self.assertIn(
-            "mcporter config add linkedin --command uvx "
-            "--arg mcp-server-linkedin@latest --env UV_HTTP_TIMEOUT=300 "
-            "--scope home",
-            linkedin_section,
-        )
-        self.assertNotIn("linkedin-scraper-mcp", linkedin_section)
-        self.assertNotIn("localhost:3000/mcp", linkedin_section)
-        self.assertNotIn("linkedin-scraper.", linkedin_section)
-        self.assertNotIn("--transport streamable-http", linkedin_section)
+        self.assertIn('bycli web read --url "https://example.com" --stdout', install_doc)
+        self.assertIn("Do not pre-read or retry the page with another generic tool.", install_doc)
+        for legacy_route in (
+            "mcp-server-linkedin",
+            "linkedin-scraper",
+            "OpenCLI",
+            "Jina Reader",
+            "r.jina.ai",
+            "Web Reader",
+        ):
+            self.assertNotIn(legacy_route, install_doc)
 
-    def test_localized_readmes_use_current_linkedin_server_name(self):
+    def test_localized_readmes_describe_bycli_only_webpage_reading(self):
         root = Path(__file__).resolve().parents[1]
         for name in ("README_ja.md", "README_ko.md"):
             content = (root / "docs" / name).read_text(encoding="utf-8")
-            self.assertIn("mcp-server-linkedin", content)
-            self.assertNotIn("linkedin-scraper-mcp", content)
+            with self.subTest(name=name):
+                self.assertIn('bycli web read --url "URL" --stdout', content)
+                for legacy_route in (
+                    "mcp-server-linkedin",
+                    "linkedin-scraper",
+                    "OpenCLI",
+                    "Jina Reader",
+                    "r.jina.ai",
+                    "Web Reader",
+                ):
+                    self.assertNotIn(legacy_route, content)
 
     def test_skill_install_command_exits_nonzero_when_install_fails(self):
         with patch("by_reach.cli._install_skill", return_value=False):
@@ -222,8 +214,13 @@ class TestSkillCommand(unittest.TestCase):
             with open(target, encoding="utf-8") as f:
                 content = f.read()
             self.assertTrue(content.strip())
-            self.assertIn("Xiaoyuzhou Podcast, LinkedIn", content)
-            self.assertNotIn("搜推特", content)
+            expected = (
+                importlib.resources.files("by_reach")
+                .joinpath("skill", "SKILL_en.md")
+                .read_text(encoding="utf-8")
+            )
+            self.assertEqual(content, expected)
+            self.assertIn('bycli web read --url "URL" --stdout', content)
             self.assertTrue(
                 os.path.exists(os.path.join(skill_parent, "by-reach", "references"))
             )
@@ -248,7 +245,13 @@ class TestSkillCommand(unittest.TestCase):
             target = os.path.join(skill_parent, "by-reach", "SKILL.md")
             with open(target, encoding="utf-8") as f:
                 content = f.read()
-            self.assertIn("互联网能力路由器", content)
+            expected_default = (
+                importlib.resources.files("by_reach")
+                .joinpath("skill", "SKILL.md")
+                .read_text(encoding="utf-8")
+            )
+            self.assertEqual(content, expected_default)
+            self.assertIn('bycli web read --url "URL" --stdout', content)
 
             env["BY_REACH_LANG"] = "en_US.UTF-8"
             with patch(
@@ -259,8 +262,13 @@ class TestSkillCommand(unittest.TestCase):
 
             with open(target, encoding="utf-8") as f:
                 content = f.read()
-            self.assertIn("Xiaoyuzhou Podcast, LinkedIn", content)
-            self.assertNotIn("互联网能力路由器", content)
+            expected_english = (
+                importlib.resources.files("by_reach")
+                .joinpath("skill", "SKILL_en.md")
+                .read_text(encoding="utf-8")
+            )
+            self.assertEqual(content, expected_english)
+            self.assertIn('bycli web read --url "URL" --stdout', content)
 
 
 if __name__ == "__main__":
