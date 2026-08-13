@@ -177,6 +177,14 @@ def main():
     p_tr.add_argument("-o", "--output", default=None,
                       help="Write transcript to a file instead of stdout")
 
+    # ── read ──
+    p_read = sub.add_parser(
+        "read",
+        help="Read a public webpage as Markdown through byCLI",
+        description="Read a public webpage as Markdown through byCLI",
+    )
+    p_read.add_argument("url", help="Public HTTP(S) URL to read")
+
     sub.add_parser("check-update", help="Check for new versions and changes")
 
     # ── watch ──
@@ -255,6 +263,8 @@ def main():
         _cmd_format(args)
     elif args.command == "transcribe":
         _cmd_transcribe(args)
+    elif args.command == "read":
+        _cmd_read(args)
 
 
 # ── Command handlers ────────────────────────────────
@@ -1571,6 +1581,30 @@ def _cmd_transcribe(args):
         print(f"✅ Transcript written to {args.output}")
     else:
         print(text)
+
+
+def _cmd_read(args):
+    """Write one public webpage's Markdown to stdout through byCLI."""
+    from by_reach.bycli import ByCliError
+    from by_reach.channels.web import WebChannel
+    from by_reach.utils.text import scrub_url_credentials
+
+    try:
+        markdown = WebChannel().read(args.url)
+    except (ByCliError, ValueError) as exc:
+        print(
+            f"by-reach read: error: {scrub_url_credentials(exc)}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
+    except Exception:
+        print(
+            "by-reach read: error: unexpected read failure",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
+
+    sys.stdout.write(markdown)
 
 
 def _parse_twitter_cookie_input(value: str):

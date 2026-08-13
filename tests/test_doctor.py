@@ -13,6 +13,7 @@ import pytest
 
 import by_reach.doctor as doctor
 from by_reach.config import Config
+from by_reach.executor_runtime import ExecutionResult
 
 
 class _StubChannel:
@@ -83,20 +84,39 @@ class TestDoctor:
             },
         }
 
-    def test_real_channel_serializes_policy_while_reporting_legacy_probe(
+    def test_real_web_channel_reports_confirmed_bycli_capability_as_active(
         self, monkeypatch
     ):
         from by_reach.channels.web import WebChannel
 
-        channel = WebChannel()
+        calls = []
+
+        def runner(args, timeout=None):
+            calls.append((list(args), timeout))
+            return ExecutionResult(
+                0,
+                json.dumps(
+                    [
+                        {
+                            "command": "web/read",
+                            "access": "read",
+                            "site": "web",
+                        }
+                    ]
+                ),
+                "",
+            )
+
+        channel = WebChannel(runner=runner)
         monkeypatch.setattr(doctor, "get_all_channels", lambda: [channel])
 
         result = doctor.check_all(config=None)["web"]
 
         assert result["backends"] == ["bycli"]
-        assert result["active_backend"] is None
-        assert result["active_probe_backend"] == "Jina Reader"
-        assert result["probe_status"] == "ok"
+        assert result["active_backend"] == "bycli"
+        assert result["active_probe_backend"] is None
+        assert result["probe_status"] is None
+        assert calls == [(["bycli", "list", "-f", "json"], 10)]
 
     @pytest.mark.parametrize(
         ("name", "backend"), [("github", "gh CLI"), ("youtube", "yt-dlp")]
@@ -327,6 +347,18 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
             output = "0.3.0"
         elif name == "ffmpeg":
             output = "ffmpeg version 7.0"
+        elif name == "bycli":
+            assert argv[1:] == ["list", "-f", "json"]
+            assert kwargs["shell"] is False
+            output = json.dumps(
+                [
+                    {
+                        "command": "web/read",
+                        "access": "read",
+                        "site": "web",
+                    }
+                ]
+            )
         else:
             pytest.fail(f"unexpected Doctor subprocess: {argv}")
         return subprocess.CompletedProcess(argv, 0, output, "")
@@ -360,6 +392,9 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
     payload = json.loads(capsys.readouterr().out)
     assert payload["github"]["status"] == "warn"
     assert payload["github"]["active_backend"] is None
+    assert payload["web"]["status"] == "ok"
+    assert payload["web"]["active_backend"] == "bycli"
+    assert ["bycli", "list", "-f", "json"] in calls
     for channel_name in (
         "twitter",
         "reddit",

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import socket
 import subprocess
 import sys
 from argparse import Namespace
@@ -13,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import by_reach.cli as cli
+from by_reach.executor_runtime import ExecutionResult
 
 
 class _MemoryConfig:
@@ -25,6 +27,242 @@ class _MemoryConfig:
 
     def set(self, key, value):
         self.data[key] = value
+
+
+def _bycli_manifest() -> str:
+    return json.dumps(
+        [{"command": "web/read", "access": "read", "site": "web"}]
+    )
+
+
+def _install_public_dns(monkeypatch):
+    monkeypatch.setattr(
+        "by_reach.utils.url.socket.getaddrinfo",
+        lambda _host, port, **_kwargs: [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("93.184.216.34", port),
+            )
+        ],
+    )
+
+
+def test_read_command_writes_markdown_to_stdout_without_decoration(
+    monkeypatch, capsys
+):
+    import by_reach.bycli as bycli
+
+    calls = []
+    results = iter(
+        [
+            ExecutionResult(0, _bycli_manifest(), ""),
+            ExecutionResult(0, "# Example\nbody\n", ""),
+        ]
+    )
+
+    def fake_run(args, timeout=None):
+        calls.append((list(args), timeout))
+        return next(results)
+
+    _install_public_dns(monkeypatch)
+    monkeypatch.setattr(bycli, "run_command", fake_run)
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "example.com/page"])
+
+    cli.main()
+
+    captured = capsys.readouterr()
+    assert captured.out == "# Example\nbody\n"
+    assert captured.err == ""
+    assert calls[-1][0] == [
+        "bycli",
+        "web",
+        "read",
+        "--url",
+        "https://example.com/page",
+        "--stdout",
+    ]
+
+
+def test_read_command_rejects_invalid_url_before_runner(monkeypatch, capsys):
+    import by_reach.bycli as bycli
+
+    calls = []
+    monkeypatch.setattr(
+        bycli,
+        "run_command",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "http://localhost/admin"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    assert calls == []
+    assert captured.out == ""
+    assert "public HTTP" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_read_command_bycli_failure_is_clean_nonzero_error(monkeypatch, capsys):
+    import by_reach.bycli as bycli
+
+    results = iter(
+        [
+            ExecutionResult(0, _bycli_manifest(), ""),
+            ExecutionResult(1, "", "browser unavailable"),
+        ]
+    )
+    _install_public_dns(monkeypatch)
+    monkeypatch.setattr(
+        bycli,
+        "run_command",
+        lambda _args, timeout=None: next(results),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    assert captured.out == ""
+    assert "browser unavailable" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_read_command_scrubs_credentials_from_errors(monkeypatch, capsys):
+    import by_reach.bycli as bycli
+
+    secret = "credential-secret"
+    results = iter(
+        [
+            ExecutionResult(0, _bycli_manifest(), ""),
+            ExecutionResult(
+                1,
+                "",
+                f"failed at https://user:pass@example.test/?token={secret}",
+            ),
+        ]
+    )
+    _install_public_dns(monkeypatch)
+    monkeypatch.setattr(
+        bycli,
+        "run_command",
+        lambda _args, timeout=None: next(results),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(SystemExit):
+        cli.main()
+
+    error = capsys.readouterr().err
+    assert "user:pass" not in error
+    assert secret not in error
+    assert "***" in error
+
+
+def test_read_command_scrubs_client_secret_from_bycli_error(monkeypatch, capsys):
+    import by_reach.bycli as bycli
+
+    results = iter(
+        [
+            ExecutionResult(0, _bycli_manifest(), ""),
+            ExecutionResult(
+                1,
+                "",
+                "browser unavailable https://example.test/?client_secret=TOPSECRET",
+            ),
+        ]
+    )
+    _install_public_dns(monkeypatch)
+    monkeypatch.setattr(
+        bycli,
+        "run_command",
+        lambda _args, timeout=None: next(results),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    assert "TOPSECRET" not in captured.out
+    assert "TOPSECRET" not in captured.err
+    assert "browser unavailable" in captured.err
+
+
+@pytest.mark.parametrize("exception", [KeyboardInterrupt(), SystemExit(7)])
+def test_read_command_does_not_catch_process_control_exceptions(
+    exception, monkeypatch
+):
+    from by_reach.channels.web import WebChannel
+
+    monkeypatch.setattr(
+        WebChannel,
+        "read",
+        lambda _self, _url: (_ for _ in ()).throw(exception),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(type(exception)) as raised:
+        cli.main()
+
+    if isinstance(exception, SystemExit):
+        assert raised.value.code == 7
+
+
+def test_read_command_hides_unexpected_exception_details(monkeypatch, capsys):
+    from by_reach.channels.web import WebChannel
+
+    class HostileError(RuntimeError):
+        def __str__(self):
+            raise AssertionError("unexpected exception must not be rendered")
+
+    monkeypatch.setattr(
+        WebChannel,
+        "read",
+        lambda _self, _url: (_ for _ in ()).throw(HostileError("TOPSECRET")),
+    )
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "https://example.com"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    assert captured.out == ""
+    assert captured.err == "by-reach read: error: unexpected read failure\n"
+    assert "TOPSECRET" not in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_read_command_help_is_specific_and_has_no_agent_reach_alias(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(sys, "argv", ["by-reach", "read", "--help"])
+
+    with pytest.raises(SystemExit) as raised:
+        cli.main()
+
+    output = capsys.readouterr().out
+    assert raised.value.code == 0
+    assert "Read a public webpage as Markdown through byCLI" in output
+    assert "Public HTTP(S) URL to read" in output
+    assert "agent-reach" not in output
 
 
 def test_configure_reads_secret_from_stdin_without_echoing_it(

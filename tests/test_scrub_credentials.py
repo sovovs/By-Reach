@@ -45,6 +45,26 @@ def test_scrubs_multiple_schemes_and_fragment_tokens():
     )
 
 
+@pytest.mark.parametrize(
+    ("key", "rendered_key"),
+    [
+        ("client_secret", "client_secret"),
+        ("CLIENT-SECRET", "CLIENT-SECRET"),
+        ("client%5Fsecret", "client%5Fsecret"),
+        ("refresh_token", "refresh_token"),
+        ("id-token", "id-token"),
+    ],
+)
+def test_scrubs_oauth_secret_query_keys_case_insensitively(key, rendered_key):
+    scrubbed = scrub_url_credentials(
+        f"OAuth failed at https://example.test/callback?{key}=TOPSECRET&client_id=public-id"
+    )
+
+    assert "TOPSECRET" not in scrubbed
+    assert f"{rendered_key}=***" in scrubbed
+    assert "client_id=public-id" in scrubbed
+
+
 def test_scrubs_bare_user_password_host_diagnostics():
     raw = "proxy handshake for user:pass@proxy.test failed"
     assert scrub_url_credentials(raw) == "proxy handshake for ***@proxy.test failed"
