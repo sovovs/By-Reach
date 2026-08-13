@@ -2,19 +2,19 @@
 
 import pytest
 
-from agent_reach.channels.bilibili import BilibiliChannel
-from agent_reach.channels.facebook import FacebookChannel
-from agent_reach.channels.github import GitHubChannel
-from agent_reach.channels.instagram import InstagramChannel
-from agent_reach.channels.linkedin import LinkedInChannel
-from agent_reach.channels.reddit import RedditChannel
-from agent_reach.channels.twitter import TwitterChannel
-from agent_reach.channels.v2ex import V2EXChannel
-from agent_reach.channels.xiaohongshu import XiaoHongShuChannel
-from agent_reach.channels.xiaoyuzhou import XiaoyuzhouChannel
-from agent_reach.channels.xueqiu import XueqiuChannel
-from agent_reach.channels.youtube import YouTubeChannel
-from agent_reach.utils.url import host_matches
+from by_reach.channels.bilibili import BilibiliChannel
+from by_reach.channels.facebook import FacebookChannel
+from by_reach.channels.github import GitHubChannel
+from by_reach.channels.instagram import InstagramChannel
+from by_reach.channels.linkedin import LinkedInChannel
+from by_reach.channels.reddit import RedditChannel
+from by_reach.channels.twitter import TwitterChannel
+from by_reach.channels.v2ex import V2EXChannel
+from by_reach.channels.xiaohongshu import XiaoHongShuChannel
+from by_reach.channels.xiaoyuzhou import XiaoyuzhouChannel
+from by_reach.channels.xueqiu import XueqiuChannel
+from by_reach.channels.youtube import YouTubeChannel
+from by_reach.utils.url import host_matches
 
 
 @pytest.mark.parametrize(

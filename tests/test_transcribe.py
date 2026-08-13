@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for agent_reach.transcribe — provider routing, fallback, and errors."""
+"""Tests for by_reach.transcribe — provider routing, fallback, and errors."""
 
 import subprocess
 from pathlib import Path
@@ -7,8 +7,8 @@ from typing import List
 
 import pytest
 
-from agent_reach import transcribe as tr
-from agent_reach.config import Config
+from by_reach import transcribe as tr
+from by_reach.config import Config
 
 # --- Fixtures ----------------------------------------------------------- #
 
@@ -864,7 +864,7 @@ class TestSubprocessDecoding:
 
 class TestYouTubeChannelTranscribe:
     def test_delegates_to_transcribe(self, monkeypatch, fake_config):
-        from agent_reach.channels.youtube import YouTubeChannel
+        from by_reach.channels.youtube import YouTubeChannel
 
         captured = {}
 

@@ -1,6 +1,9 @@
 import re
 from pathlib import Path
 
+import by_reach
+import by_reach.core as core
+
 ROOT = Path(__file__).parents[1]
 
 
@@ -45,3 +48,22 @@ def test_public_package_uses_only_by_reach_names():
     )
     assert (ROOT / "by_reach" / "__init__.py").is_file()
     assert not (ROOT / "agent_reach").exists()
+
+
+def test_public_class_uses_only_by_reach_name():
+    assert hasattr(by_reach, "ByReach")
+    assert not hasattr(by_reach, "AgentReach")
+    assert hasattr(core, "ByReach")
+    assert not hasattr(core, "AgentReach")
+
+
+def test_mcp_extra_declares_the_recovery_dependency_once():
+    manifest = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    optional = _manifest_section(manifest, "project.optional-dependencies")
+    mcp = re.search(r"^\s*mcp\s*=\s*\[(.*)\]\s*$", optional, re.MULTILINE)
+    all_extra = re.search(r"^\s*all\s*=\s*\[(.*)\]\s*$", optional, re.MULTILINE)
+
+    assert mcp is not None
+    assert re.fullmatch(r'\s*"mcp\[cli\]>=1\.0"\s*', mcp.group(1))
+    assert all_extra is not None
+    assert all_extra.group(1).count('"mcp[cli]>=1.0"') == 1

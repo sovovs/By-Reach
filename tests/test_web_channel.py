@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_reach.channels.web import _UA, WebChannel
+from by_reach.channels.web import _UA, WebChannel
 
 _MAX_RESPONSE_BYTES = 5 * 1024 * 1024
 

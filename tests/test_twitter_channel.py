@@ -4,8 +4,8 @@
 import os
 from unittest.mock import Mock, patch
 
-from agent_reach.backends import OpenCLIStatus
-from agent_reach.channels.twitter import (
+from by_reach.backends import OpenCLIStatus
+from by_reach.channels.twitter import (
     TwitterChannel,
     twitter_cli_child_env,
 )
@@ -121,7 +121,7 @@ def test_nothing_installed_returns_install_hint():
 
 def test_opencli_bridge_ready_is_unverified_for_twitter():
     with patch(
-        "agent_reach.backends.opencli_status",
+        "by_reach.backends.opencli_status",
         return_value=OpenCLIStatus(
             installed=True,
             extension_connected=True,

@@ -1,9 +1,9 @@
-"""Security boundaries for the optional Agent Reach MCP server."""
+"""Security boundaries for the optional By-Reach MCP server."""
 
 import asyncio
 from types import SimpleNamespace
 
-import agent_reach.integrations.mcp_server as mcp_server
+import by_reach.integrations.mcp_server as mcp_server
 
 
 class _FakeServer:
@@ -53,7 +53,7 @@ def test_mcp_status_uses_read_only_config(monkeypatch):
             self.read_only = read_only
             created_configs.append(self)
 
-    class _AgentReach:
+    class _ByReach:
         def __init__(self, config):
             self.config = config
 
@@ -61,11 +61,13 @@ def test_mcp_status_uses_read_only_config(monkeypatch):
             return "ok"
 
     monkeypatch.setattr(mcp_server, "Config", _RecordingConfig)
-    monkeypatch.setattr(mcp_server, "AgentReach", _AgentReach)
+    monkeypatch.setattr(mcp_server, "ByReach", _ByReach)
 
     server = mcp_server.create_server()
     result = asyncio.run(server.call_tool_handler("get_status", {}))
 
+    assert server.name == "by-reach"
+    assert server.name != "agent-reach"
     assert len(created_configs) == 1
     assert created_configs[0].read_only is True
     assert result[0].text == "ok"
@@ -78,7 +80,7 @@ def test_mcp_status_exception_credentials_are_scrubbed(monkeypatch):
         def __init__(self, *, read_only=False):
             self.read_only = read_only
 
-    class _ExplodingAgentReach:
+    class _ExplodingByReach:
         def __init__(self, config):
             self.config = config
 
@@ -89,7 +91,7 @@ def test_mcp_status_exception_credentials_are_scrubbed(monkeypatch):
             )
 
     monkeypatch.setattr(mcp_server, "Config", _Config)
-    monkeypatch.setattr(mcp_server, "AgentReach", _ExplodingAgentReach)
+    monkeypatch.setattr(mcp_server, "ByReach", _ExplodingByReach)
 
     server = mcp_server.create_server()
     result = asyncio.run(server.call_tool_handler("get_status", {}))

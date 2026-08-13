@@ -17,8 +17,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from agent_reach.channels import xueqiu as xq
-from agent_reach.channels.xueqiu import XueqiuChannel, _strip_html
+from by_reach.channels import xueqiu as xq
+from by_reach.channels.xueqiu import XueqiuChannel, _strip_html
 
 # --- can_handle ---
 

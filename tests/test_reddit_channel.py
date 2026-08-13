@@ -5,7 +5,7 @@ import json
 import time
 from unittest.mock import Mock, patch
 
-from agent_reach.channels.reddit import RedditChannel
+from by_reach.channels.reddit import RedditChannel
 
 
 def test_can_handle_matches_reddit_hosts():
@@ -137,7 +137,7 @@ def _opencli(installed=True, broken=False, ready=True, hint=""):
 
 def test_check_opencli_not_installed_is_none():
     with patch(
-        "agent_reach.backends.opencli_status",
+        "by_reach.backends.opencli_status",
         return_value=_opencli(installed=False),
     ):
         assert RedditChannel()._check_opencli() is None
@@ -145,7 +145,7 @@ def test_check_opencli_not_installed_is_none():
 
 def test_check_opencli_broken_is_error():
     with patch(
-        "agent_reach.backends.opencli_status",
+        "by_reach.backends.opencli_status",
         return_value=_opencli(broken=True, hint="reinstall opencli"),
     ):
         status, message = RedditChannel()._check_opencli()
@@ -155,7 +155,7 @@ def test_check_opencli_broken_is_error():
 
 def test_check_opencli_bridge_ready_is_unverified():
     with patch(
-        "agent_reach.backends.opencli_status",
+        "by_reach.backends.opencli_status",
         return_value=_opencli(ready=True),
     ):
         status, message = RedditChannel()._check_opencli()
@@ -166,7 +166,7 @@ def test_check_opencli_bridge_ready_is_unverified():
 
 def test_check_opencli_installed_not_ready_is_warn():
     with patch(
-        "agent_reach.backends.opencli_status",
+        "by_reach.backends.opencli_status",
         return_value=_opencli(ready=False, hint="connect the extension"),
     ):
         status, message = RedditChannel()._check_opencli()

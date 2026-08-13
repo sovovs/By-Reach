@@ -14,9 +14,9 @@ reddit (#364), xueqiu (#365) and v2ex (#366).
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from agent_reach.channels import youtube as yt
-from agent_reach.channels.youtube import YouTubeChannel, _has_js_runtime_config
-from agent_reach.probe import ProbeResult
+from by_reach.channels import youtube as yt
+from by_reach.channels.youtube import YouTubeChannel, _has_js_runtime_config
+from by_reach.probe import ProbeResult
 
 
 def _which(*present):
@@ -105,7 +105,7 @@ def test_check_warn_when_no_js_runtime_but_backend_active():
         status, message = ch.check()
     assert status == "warn"
     assert "JS runtime" in message
-    assert "agent-reach install --system" in message
+    assert "by-reach install --system" in message
     assert ch.active_backend == "yt-dlp"  # probe was ok → backend attributed
 
 

@@ -18,19 +18,19 @@ def test_integration_script_exercises_the_current_cli_contract():
     assert "sys.version_info >= (3, 10)" in text
     assert 'PYTHON_CMD=("$REPO_ROOT/.venv/bin/python")' in text
     assert 'venv/Scripts/activate' in text
-    assert "agent-reach install --env=auto --safe" in text
-    assert "agent-reach install --env=auto --system --dry-run" in text
-    assert "agent-reach doctor --json" in text
+    assert "by-reach install --env=auto --safe" in text
+    assert "by-reach install --env=auto --system --dry-run" in text
+    assert "by-reach doctor --json" in text
     assert 'pytest "$REPO_ROOT/tests" -q' in text
 
     nonexistent_commands = (
-        "agent-reach read ",
-        "agent-reach search ",
-        "agent-reach search-github ",
-        "agent-reach search-twitter ",
-        "agent-reach search-reddit ",
-        "agent-reach search-youtube ",
-        "agent-reach search-bilibili ",
-        "agent-reach search-xhs ",
+        "by-reach read ",
+        "by-reach search ",
+        "by-reach search-github ",
+        "by-reach search-twitter ",
+        "by-reach search-reddit ",
+        "by-reach search-youtube ",
+        "by-reach search-bilibili ",
+        "by-reach search-xhs ",
     )
     assert not any(command in text for command in nonexistent_commands)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for 'agent-reach skill' command and _install_skill / _uninstall_skill."""
+"""Tests for 'by-reach skill' command and _install_skill / _uninstall_skill."""
 
 import importlib.resources
 import os
@@ -10,7 +10,15 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
-from agent_reach.cli import _cmd_skill, _install_skill, _uninstall_skill
+from by_reach.cli import _cmd_skill, _install_skill, _uninstall_skill
+
+
+def test_default_skill_install_uses_only_by_reach_identity(isolated_home):
+    assert _install_skill()
+
+    skill_file = isolated_home / ".agents" / "skills" / "by-reach" / "SKILL.md"
+    assert skill_file.is_file()
+    assert not (isolated_home / ".agents" / "skills" / "agent-reach").exists()
 
 
 class TestSkillCommand(unittest.TestCase):
@@ -18,7 +26,7 @@ class TestSkillCommand(unittest.TestCase):
 
     def test_skill_resources_include_both_locales(self):
         """Package resources should expose both default and English skill markdown files."""
-        skill_dir = importlib.resources.files("agent_reach").joinpath("skill")
+        skill_dir = importlib.resources.files("by_reach").joinpath("skill")
 
         default_skill = skill_dir.joinpath("SKILL.md").read_text(encoding="utf-8")
         english_skill = skill_dir.joinpath("SKILL_en.md").read_text(encoding="utf-8")
@@ -29,7 +37,7 @@ class TestSkillCommand(unittest.TestCase):
     def test_exa_reference_uses_default_registered_tools_only(self):
         """Agent instructions must not call Exa tools disabled by default."""
         search_reference = (
-            importlib.resources.files("agent_reach")
+            importlib.resources.files("by_reach")
             .joinpath("skill", "references", "search.md")
             .read_text(encoding="utf-8")
         )
@@ -42,8 +50,8 @@ class TestSkillCommand(unittest.TestCase):
         """Packaged commands must survive PowerShell and POSIX parsing."""
         root = Path(__file__).resolve().parents[1]
         markdown_files = [
-            *(root / "agent_reach" / "skill").rglob("*.md"),
-            *(root / "agent_reach" / "guides").rglob("*.md"),
+            *(root / "by_reach" / "skill").rglob("*.md"),
+            *(root / "by_reach" / "guides").rglob("*.md"),
             root / "docs" / "install.md",
             root / "docs" / "troubleshooting.md",
         ]
@@ -57,7 +65,7 @@ class TestSkillCommand(unittest.TestCase):
     def test_linkedin_reference_uses_current_tool_contract(self):
         """LinkedIn examples should use the current server and parameters."""
         career_reference = (
-            importlib.resources.files("agent_reach")
+            importlib.resources.files("by_reach")
             .joinpath("skill", "references", "career.md")
             .read_text(encoding="utf-8")
         )
@@ -117,7 +125,7 @@ class TestSkillCommand(unittest.TestCase):
             self.assertNotIn("linkedin-scraper-mcp", content)
 
     def test_skill_install_command_exits_nonzero_when_install_fails(self):
-        with patch("agent_reach.cli._install_skill", return_value=False):
+        with patch("by_reach.cli._install_skill", return_value=False):
             with self.assertRaises(SystemExit) as raised:
                 _cmd_skill(Namespace(install=True, uninstall=False))
 
@@ -130,7 +138,7 @@ class TestSkillCommand(unittest.TestCase):
             os.makedirs(skill_dir)
 
             with patch(
-                "agent_reach.cli.os.path.expanduser",
+                "by_reach.cli.os.path.expanduser",
                 side_effect=lambda p: p.replace("~", tmpdir),
             ), patch.dict(os.environ, {}, clear=False):
                 # Remove OPENCLAW_HOME to avoid interference
@@ -145,7 +153,7 @@ class TestSkillCommand(unittest.TestCase):
                     # Verify content is non-empty
                     with open(os.path.join(dirpath, "SKILL.md"), encoding="utf-8") as f:
                         content = f.read()
-                    self.assertIn("Agent Reach", content)
+                    self.assertIn("By-Reach", content)
             # _install_skill may or may not find dirs depending on mock; just ensure no crash
             # The important test is that the function runs without error
 
@@ -153,7 +161,7 @@ class TestSkillCommand(unittest.TestCase):
         """_uninstall_skill should remove skill directories."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a fake skill installation
-            skill_path = os.path.join(tmpdir, ".openclaw", "skills", "agent-reach")
+            skill_path = os.path.join(tmpdir, ".openclaw", "skills", "by-reach")
             os.makedirs(skill_path)
             with open(os.path.join(skill_path, "SKILL.md"), "w", encoding="utf-8") as f:
                 f.write("test")
@@ -161,7 +169,7 @@ class TestSkillCommand(unittest.TestCase):
             self.assertTrue(os.path.exists(skill_path))
 
             with patch(
-                "agent_reach.cli.os.path.expanduser",
+                "by_reach.cli.os.path.expanduser",
                 side_effect=lambda p: p.replace("~", tmpdir),
             ), patch.dict(os.environ, {}, clear=False):
                 env = os.environ.copy()
@@ -172,14 +180,14 @@ class TestSkillCommand(unittest.TestCase):
             self.assertFalse(os.path.exists(skill_path))
 
     def test_install_creates_dir_if_parent_exists(self):
-        """_install_skill should create agent-reach dir inside existing skill dir."""
+        """_install_skill should create by-reach dir inside existing skill dir."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create the .openclaw/skills parent but not agent-reach subdir
+            # Create the .openclaw/skills parent but not by-reach subdir
             skill_parent = os.path.join(tmpdir, ".openclaw", "skills")
             os.makedirs(skill_parent)
 
             with patch(
-                "agent_reach.cli.os.path.expanduser",
+                "by_reach.cli.os.path.expanduser",
                 side_effect=lambda p: p.replace("~", tmpdir),
             ), patch.dict(os.environ, {}, clear=False):
                 env = os.environ.copy()
@@ -187,11 +195,11 @@ class TestSkillCommand(unittest.TestCase):
                 with patch.dict(os.environ, env, clear=True):
                     _install_skill()
 
-            target = os.path.join(skill_parent, "agent-reach", "SKILL.md")
+            target = os.path.join(skill_parent, "by-reach", "SKILL.md")
             self.assertTrue(os.path.exists(target))
             with open(target, encoding="utf-8") as f:
                 content = f.read()
-            self.assertIn("Agent Reach", content)
+            self.assertIn("By-Reach", content)
 
     def test_install_uses_english_skill_for_english_locale(self):
         """_install_skill should install the English skill file for English locales."""
@@ -200,7 +208,7 @@ class TestSkillCommand(unittest.TestCase):
             os.makedirs(skill_parent)
 
             with patch(
-                "agent_reach.cli.os.path.expanduser",
+                "by_reach.cli.os.path.expanduser",
                 side_effect=lambda p: p.replace("~", tmpdir),
             ):
                 env = os.environ.copy()
@@ -209,7 +217,7 @@ class TestSkillCommand(unittest.TestCase):
                 with patch.dict(os.environ, env, clear=True):
                     _install_skill()
 
-            target = os.path.join(skill_parent, "agent-reach", "SKILL.md")
+            target = os.path.join(skill_parent, "by-reach", "SKILL.md")
             self.assertTrue(os.path.exists(target))
             with open(target, encoding="utf-8") as f:
                 content = f.read()
@@ -217,8 +225,42 @@ class TestSkillCommand(unittest.TestCase):
             self.assertIn("Xiaoyuzhou Podcast, LinkedIn", content)
             self.assertNotIn("搜推特", content)
             self.assertTrue(
-                os.path.exists(os.path.join(skill_parent, "agent-reach", "references"))
+                os.path.exists(os.path.join(skill_parent, "by-reach", "references"))
             )
+
+    def test_install_uses_by_reach_locale_override_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill_parent = os.path.join(tmpdir, ".openclaw", "skills")
+            os.makedirs(skill_parent)
+
+            with patch(
+                "by_reach.cli.os.path.expanduser",
+                side_effect=lambda p: p.replace("~", tmpdir),
+            ):
+                env = os.environ.copy()
+                env.pop("OPENCLAW_HOME", None)
+                env["LANG"] = "zh_CN.UTF-8"
+                env["AGENT_REACH_LANG"] = "en_US.UTF-8"
+                env.pop("BY_REACH_LANG", None)
+                with patch.dict(os.environ, env, clear=True):
+                    _install_skill()
+
+            target = os.path.join(skill_parent, "by-reach", "SKILL.md")
+            with open(target, encoding="utf-8") as f:
+                content = f.read()
+            self.assertIn("互联网能力路由器", content)
+
+            env["BY_REACH_LANG"] = "en_US.UTF-8"
+            with patch(
+                "by_reach.cli.os.path.expanduser",
+                side_effect=lambda p: p.replace("~", tmpdir),
+            ), patch.dict(os.environ, env, clear=True):
+                _install_skill()
+
+            with open(target, encoding="utf-8") as f:
+                content = f.read()
+            self.assertIn("Xiaoyuzhou Podcast, LinkedIn", content)
+            self.assertNotIn("互联网能力路由器", content)
 
 
 if __name__ == "__main__":

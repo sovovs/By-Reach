@@ -6,9 +6,9 @@ import json
 import subprocess
 import time
 
-from agent_reach.channels.reddit import RedditChannel
-from agent_reach.channels.twitter import TwitterChannel
-from agent_reach.channels.xiaohongshu import XiaoHongShuChannel
+from by_reach.channels.reddit import RedditChannel
+from by_reach.channels.twitter import TwitterChannel
+from by_reach.channels.xiaohongshu import XiaoHongShuChannel
 
 
 def _forbid_subprocess(*_args, **_kwargs):

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for Agent Reach CLI."""
+"""Tests for By-Reach CLI."""
 
 import shutil
 import subprocess
@@ -9,29 +9,30 @@ from unittest.mock import patch
 import pytest
 import requests
 
-import agent_reach.cli as cli
-from agent_reach.cli import main
-from agent_reach.config import Config
+import by_reach.cli as cli
+from by_reach.cli import main
+from by_reach.config import Config
 
 
 class TestCLI:
     def test_version(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            with patch("sys.argv", ["agent-reach", "version"]):
+            with patch("sys.argv", ["by-reach", "version"]):
                 main()
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
-        assert "Agent Reach v" in captured.out
+        assert "By-Reach v" in captured.out
+        assert "agent-reach" not in captured.out
 
     def test_no_command_shows_help(self, capsys):
         with pytest.raises(SystemExit) as exc_info:
-            with patch("sys.argv", ["agent-reach"]):
+            with patch("sys.argv", ["by-reach"]):
                 main()
         assert exc_info.value.code == 0
 
     def test_doctor_runs(self, capsys):
         with patch(
-            "agent_reach.doctor.check_all",
+            "by_reach.doctor.check_all",
             return_value={
                 "web": {
                     "status": "ok",
@@ -43,21 +44,21 @@ class TestCLI:
                 }
             },
         ), patch(
-            "agent_reach.doctor.format_report",
-            return_value="Agent Reach\n✅ 网页可用",
-        ), patch("sys.argv", ["agent-reach", "doctor"]):
+            "by_reach.doctor.format_report",
+            return_value="By-Reach\n✅ 网页可用",
+        ), patch("sys.argv", ["by-reach", "doctor"]):
             main()
         captured = capsys.readouterr()
-        assert "Agent Reach" in captured.out
+        assert "By-Reach" in captured.out
         assert "✅" in captured.out
 
     def test_doctor_is_read_only_and_never_installs_skill(
         self, monkeypatch, tmp_path, capsys
     ):
-        skill_dir = tmp_path / ".agents" / "skills" / "agent-reach"
+        skill_dir = tmp_path / ".agents" / "skills" / "by-reach"
         skill_dir.mkdir(parents=True)
         skill_file = skill_dir / "SKILL.md"
-        custom_content = "# custom Agent Reach skill\n"
+        custom_content = "# custom By-Reach skill\n"
         skill_file.write_text(custom_content, encoding="utf-8")
 
         monkeypatch.setattr(
@@ -65,11 +66,11 @@ class TestCLI:
             "expanduser",
             lambda p: p.replace("~", str(tmp_path)),
         )
-        config_dir = tmp_path / ".agent-reach"
+        config_dir = tmp_path / ".by-reach"
         monkeypatch.setattr(Config, "CONFIG_DIR", config_dir)
         monkeypatch.setattr(Config, "CONFIG_FILE", config_dir / "config.yaml")
-        monkeypatch.setattr("agent_reach.doctor.check_all", lambda config: {})
-        monkeypatch.setattr("agent_reach.doctor.format_report", lambda results: "report")
+        monkeypatch.setattr("by_reach.doctor.check_all", lambda config: {})
+        monkeypatch.setattr("by_reach.doctor.format_report", lambda results: "report")
         install_calls = []
         monkeypatch.setattr(
             cli,
@@ -89,29 +90,29 @@ class TestCLI:
         assert f"Skill installed for Agent: {skill_dir}" not in out
 
     def test_transcribe_command_prints_text(self, capsys):
-        with patch("agent_reach.transcribe.transcribe", return_value="hello transcript"):
-            with patch("sys.argv", ["agent-reach", "transcribe", "audio.mp3"]):
+        with patch("by_reach.transcribe.transcribe", return_value="hello transcript"):
+            with patch("sys.argv", ["by-reach", "transcribe", "audio.mp3"]):
                 main()
         captured = capsys.readouterr()
         assert "hello transcript" in captured.out
 
     def test_transcribe_command_writes_output_file(self, capsys, tmp_path):
         out_file = tmp_path / "t.txt"
-        with patch("agent_reach.transcribe.transcribe", return_value="saved text"):
-            with patch("sys.argv", ["agent-reach", "transcribe", "audio.mp3", "-o", str(out_file)]):
+        with patch("by_reach.transcribe.transcribe", return_value="saved text"):
+            with patch("sys.argv", ["by-reach", "transcribe", "audio.mp3", "-o", str(out_file)]):
                 main()
         assert out_file.read_text(encoding="utf-8").strip() == "saved text"
         assert "Transcript written" in capsys.readouterr().out
 
     def test_transcribe_provider_fallback_requires_explicit_flag(self):
         with patch(
-            "agent_reach.transcribe.transcribe",
+            "by_reach.transcribe.transcribe",
             return_value="hello transcript",
         ) as mock_transcribe:
             with patch(
                 "sys.argv",
                 [
-                    "agent-reach",
+                    "by-reach",
                     "transcribe",
                     "audio.mp3",
                     "--allow-provider-fallback",
@@ -126,11 +127,11 @@ class TestCLI:
         )
 
     def test_transcribe_provider_fallback_rejects_explicit_provider(self, capsys):
-        with patch("agent_reach.transcribe.transcribe") as mock_transcribe:
+        with patch("by_reach.transcribe.transcribe") as mock_transcribe:
             with patch(
                 "sys.argv",
                 [
-                    "agent-reach",
+                    "by-reach",
                     "transcribe",
                     "audio.mp3",
                     "--provider",
@@ -228,8 +229,8 @@ class TestCLI:
         assert calls == ["rdt"]
 
     def test_install_opencli_uses_resolved_windows_npm_path(self, monkeypatch):
-        import agent_reach.backends as backends
-        from agent_reach.backends import OpenCLIStatus
+        import by_reach.backends as backends
+        from by_reach.backends import OpenCLIStatus
 
         statuses = iter(
             [
@@ -265,7 +266,7 @@ class TestCLI:
         monkeypatch.setattr(cli, "_install_opencli_deps", lambda: calls.append("opencli"))
         monkeypatch.setattr(cli, "_install_skill", lambda: None)
         monkeypatch.setattr(
-            "agent_reach.doctor.check_all",
+            "by_reach.doctor.check_all",
             lambda config: {
                 "facebook": {
                     "status": "ok",
@@ -277,7 +278,7 @@ class TestCLI:
                 }
             },
         )
-        monkeypatch.setattr("agent_reach.doctor.format_report", lambda results: "report")
+        monkeypatch.setattr("by_reach.doctor.format_report", lambda results: "report")
 
         cli._cmd_install(
             Namespace(
@@ -387,7 +388,7 @@ class TestCheckUpdateRetry:
         assert cli._classify_github_response_error(R()) == "rate_limit"
 
     def test_check_update_reports_classified_error(self, capsys):
-        with patch("agent_reach.cli._github_get_with_retry", return_value=(None, "timeout", 3)):
+        with patch("by_reach.cli._github_get_with_retry", return_value=(None, "timeout", 3)):
             result = cli._cmd_check_update()
 
         captured = capsys.readouterr()
@@ -397,19 +398,65 @@ class TestCheckUpdateRetry:
 
 
 class TestVersionCompare:
-    def test_newer_remote_triggers_update(self):
-        assert cli._is_newer_version("1.5.0", "1.4.2") is True
+    @pytest.mark.parametrize(
+        ("remote", "local"),
+        (
+            ("1.0a2", "1.0a1"),
+            ("1.0b1", "1.0a9"),
+            ("1.0rc1", "1.0b9"),
+            ("1.0", "1.0rc1"),
+            ("1.0.post1", "1.0"),
+            ("1.0.dev2", "1.0.dev1"),
+            ("1.0", "1.0.dev1"),
+            ("1.0+build.2", "1.0+build.1"),
+            ("1.0+build.1", "1.0"),
+            ("v2.0.0", "1.9.9"),
+        ),
+    )
+    def test_pep440_newer_versions_trigger_update(self, remote, local):
+        assert cli._is_newer_version(remote, local) is True
 
-    def test_equal_versions_no_update(self):
-        assert cli._is_newer_version("1.5.0", "1.5.0") is False
+    @pytest.mark.parametrize(
+        ("remote", "local"),
+        (
+            ("1.0a1", "1.0a2"),
+            ("1.0a9", "1.0b1"),
+            ("1.0b9", "1.0rc1"),
+            ("1.0rc1", "1.0"),
+            ("1.0", "1.0.post1"),
+            ("1.0.dev1", "1.0.dev2"),
+            ("1.0.dev1", "1.0"),
+            ("1.0+build.1", "1.0+build.2"),
+            ("1.4.2", "2.0.0b1"),
+        ),
+    )
+    def test_pep440_downgrades_do_not_trigger_update(self, remote, local):
+        assert cli._is_newer_version(remote, local) is False
 
-    def test_local_ahead_of_release_no_downgrade_prompt(self):
-        """发版窗口期本地装了 main(更新)时,不能提示"有更新"诱导降级。"""
-        assert cli._is_newer_version("1.4.2", "1.5.0") is False
+    @pytest.mark.parametrize(
+        ("remote", "local"),
+        (
+            ("1", "1.0"),
+            ("1.0", "1.0.0"),
+            ("1.0.0", "1.0.0.0"),
+            ("v1.0", "1.0.0"),
+        ),
+    )
+    def test_pep440_equivalent_versions_do_not_trigger_update(self, remote, local):
+        assert cli._is_newer_version(remote, local) is False
 
-    def test_unparseable_falls_back_to_inequality(self):
-        assert cli._is_newer_version("2026.06-beta", "1.5.0") is True
-        assert cli._is_newer_version("1.5.0", "1.5.0-dev") is True
+    @pytest.mark.parametrize(
+        ("remote", "local"),
+        (
+            ("", "1.0"),
+            ("release-next", "1.0"),
+            ("1.0", ""),
+            ("1.0", "release-current"),
+            ("release-next", "release-current"),
+        ),
+    )
+    def test_invalid_versions_fail_closed(self, remote, local):
+        assert cli._is_newer_version(remote, local) is False
 
 
 class TestWatchVersionCompare:
@@ -425,7 +472,7 @@ class TestWatchVersionCompare:
 
         monkeypatch.setattr(cli, "_github_get_with_retry", lambda *a, **k: (R(), None, 1))
         monkeypatch.setattr(
-            "agent_reach.doctor.check_all",
+            "by_reach.doctor.check_all",
             lambda config: {"web": {"status": "ok", "name": "任意网页", "message": "ok",
                             "tier": 0, "backends": ["Jina Reader"], "active_backend": "Jina Reader"}},
         )

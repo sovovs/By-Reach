@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 import pytest
 
-import agent_reach.cli as cli
+import by_reach.cli as cli
 
 ROOT = Path(__file__).resolve().parents[1]
-TRANSCRIBE_SCRIPT = ROOT / "agent_reach" / "scripts" / "transcribe_xiaoyuzhou.sh"
+TRANSCRIBE_SCRIPT = ROOT / "by_reach" / "scripts" / "transcribe_xiaoyuzhou.sh"
 
 
 class _DummyConfig:
@@ -27,7 +27,7 @@ def test_install_xiaoyuzhou_deps_does_not_raise_when_no_groq_key(
         "expanduser",
         lambda value: value.replace("~", str(tmp_path)),
     )
-    with patch("agent_reach.config.Config", return_value=_DummyConfig()), patch(
+    with patch("by_reach.config.Config", return_value=_DummyConfig()), patch(
         "shutil.which", return_value=None
     ):
         cli._install_xiaoyuzhou_deps()
@@ -42,7 +42,7 @@ def test_install_xiaoyuzhou_deps_replaces_stale_managed_script(
 ):
     import stat
 
-    installed = tmp_path / ".agent-reach" / "tools" / "xiaoyuzhou" / "transcribe.sh"
+    installed = tmp_path / ".by-reach" / "tools" / "xiaoyuzhou" / "transcribe.sh"
     installed.parent.mkdir(parents=True)
     installed.write_text("#!/bin/sh\necho stale\n", encoding="utf-8")
 
@@ -51,7 +51,7 @@ def test_install_xiaoyuzhou_deps_replaces_stale_managed_script(
         "expanduser",
         lambda value: value.replace("~", str(tmp_path)),
     )
-    monkeypatch.setattr("agent_reach.config.Config", lambda: _DummyConfig())
+    monkeypatch.setattr("by_reach.config.Config", lambda: _DummyConfig())
     monkeypatch.setattr("shutil.which", lambda _name: None)
 
     cli._install_xiaoyuzhou_deps()
@@ -118,7 +118,7 @@ def _script_env(
 
 
 def _assert_work_dir_cleaned(temp_root: Path) -> None:
-    assert list(temp_root.glob("agent-reach-xiaoyuzhou.*")) == []
+    assert list(temp_root.glob("by-reach-xiaoyuzhou.*")) == []
 
 
 @pytest.mark.parametrize(
@@ -198,7 +198,7 @@ def test_transcribe_script_uses_secure_temp_and_bounded_curl_calls():
     assert "mktemp -d" in text
     assert "xiaoyuzhou_$$" not in text
     assert "/tmp/podcast_transcript.txt" not in text
-    assert 'mktemp "${TEMP_ROOT%/}/agent-reach-transcript.XXXXXX"' in text
+    assert 'mktemp "${TEMP_ROOT%/}/by-reach-transcript.XXXXXX"' in text
     assert "trap cleanup EXIT" in text
     assert text.count('--connect-timeout "$CURL_CONNECT_TIMEOUT"') == 4
     assert text.count('--max-time "$GROQ_TIMEOUT"') == 2

@@ -8,14 +8,14 @@ from urllib.error import URLError
 
 import pytest
 
-from agent_reach.backends import OpenCLIStatus
-from agent_reach.channels import get_all_channels, get_channel
-from agent_reach.channels.bilibili import BilibiliChannel
-from agent_reach.channels.facebook import FacebookChannel
-from agent_reach.channels.instagram import InstagramChannel
-from agent_reach.channels.v2ex import V2EXChannel
-from agent_reach.channels.xiaohongshu import XiaoHongShuChannel
-from agent_reach.channels.xueqiu import XueqiuChannel
+from by_reach.backends import OpenCLIStatus
+from by_reach.channels import get_all_channels, get_channel
+from by_reach.channels.bilibili import BilibiliChannel
+from by_reach.channels.facebook import FacebookChannel
+from by_reach.channels.instagram import InstagramChannel
+from by_reach.channels.v2ex import V2EXChannel
+from by_reach.channels.xiaohongshu import XiaoHongShuChannel
+from by_reach.channels.xueqiu import XueqiuChannel
 
 
 class TestChannelRegistry:
@@ -58,7 +58,7 @@ class TestOpenCLISiteChannels:
         self, monkeypatch
     ):
         monkeypatch.setattr(
-            "agent_reach.backends.opencli_status",
+            "by_reach.backends.opencli_status",
             lambda: OpenCLIStatus(
                 installed=True,
                 extension_connected=True,
@@ -82,19 +82,19 @@ class TestOpenCLISiteChannels:
 
     def test_opencli_missing_reports_off(self, monkeypatch):
         monkeypatch.setattr(
-            "agent_reach.backends.opencli_status",
+            "by_reach.backends.opencli_status",
             lambda: OpenCLIStatus(installed=False),
         )
         ch = InstagramChannel()
         status, msg = ch.check()
         assert status == "off"
         assert ch.active_backend is None
-        assert "agent-reach install --system --channels opencli" in msg
+        assert "by-reach install --system --channels opencli" in msg
         assert "instagram.com" in msg
 
     def test_opencli_installed_without_extension_reports_warn(self, monkeypatch):
         monkeypatch.setattr(
-            "agent_reach.backends.opencli_status",
+            "by_reach.backends.opencli_status",
             lambda: OpenCLIStatus(
                 installed=True,
                 hint="OpenCLI 已安装，但 Chrome 扩展未安装。",
@@ -152,7 +152,7 @@ class TestV2EXChannel:
 
     def test_check_passes_its_read_only_config_to_cookie_loading(self, monkeypatch):
         """Doctor's config object must flow through instead of reopening config."""
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         supplied_config = object()
         observed = []
@@ -453,7 +453,7 @@ class TestXueqiuChannel:
         assert not ch.can_handle("https://v2ex.com/t/123")
 
     def test_check_ok_when_api_reachable(self, monkeypatch):
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", True)
 
@@ -484,7 +484,7 @@ class TestXueqiuChannel:
         assert "公开 API 可用" in msg
 
     def test_check_warn_when_api_unreachable(self, monkeypatch):
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", True)
 
@@ -501,7 +501,7 @@ class TestXueqiuChannel:
     # ------------------------------------------------------------------ #
 
     def test_get_stock_quote(self, monkeypatch):
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", True)
 
@@ -553,7 +553,7 @@ class TestXueqiuChannel:
     # ------------------------------------------------------------------ #
 
     def test_search_stock(self, monkeypatch):
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", True)
 
@@ -586,7 +586,7 @@ class TestXueqiuChannel:
     # ------------------------------------------------------------------ #
 
     def test_get_hot_posts_returns_list(self, monkeypatch):
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", True)
 
@@ -630,7 +630,7 @@ class TestXueqiuChannel:
         assert posts[0]["url"] == "https://xueqiu.com/1234567890/111"
 
     def test_get_hot_posts_respects_limit(self, monkeypatch):
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", True)
 
@@ -670,7 +670,7 @@ class TestXueqiuChannel:
     # ------------------------------------------------------------------ #
 
     def test_get_hot_stocks(self, monkeypatch):
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", True)
 
@@ -708,7 +708,7 @@ class TestXueqiuChannel:
 
     def test_ensure_cookies_loads_from_config(self, monkeypatch, tmp_path):
         """_ensure_cookies() should inject cookies from the config file."""
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", False)
 
@@ -719,7 +719,7 @@ class TestXueqiuChannel:
                     return "xq_a_token=TESTTOKEN; xq_is_login=1"
                 return default
 
-        import agent_reach.channels.xueqiu as xq_mod
+        import by_reach.channels.xueqiu as xq_mod
         monkeypatch.setattr(
             xq_mod,
             "_load_cookies_from_config",
@@ -745,7 +745,7 @@ class TestXueqiuChannel:
         assert "xq_a_token" in cookie_names
 
     def test_ensure_cookies_uses_public_homepage_fallback(self, monkeypatch):
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", False)
         monkeypatch.setattr(
@@ -770,7 +770,7 @@ class TestXueqiuChannel:
 
     def test_get_json_sends_referer_and_browser_ua(self, monkeypatch):
         """_get_json() must send Referer and a browser-like User-Agent."""
-        import agent_reach.channels.xueqiu as xueqiu_mod
+        import by_reach.channels.xueqiu as xueqiu_mod
 
         monkeypatch.setattr(xueqiu_mod, "_cookies_initialized", True)
         captured = {}
@@ -790,7 +790,7 @@ class TestXueqiuChannel:
 
         assert captured["referer"] == "https://xueqiu.com/"
         assert "Mozilla" in captured["ua"]
-        assert "agent-reach" not in captured["ua"]
+        assert "by-reach" not in captured["ua"]
 
 
 class TestRedditChannel:
@@ -799,13 +799,13 @@ class TestRedditChannel:
     @staticmethod
     def _isolate(monkeypatch, opencli=None):
         """隔离 OpenCLI 候选（None = 未安装），聚焦 rdt-cli 路径。"""
-        from agent_reach.channels.reddit import RedditChannel
+        from by_reach.channels.reddit import RedditChannel
         monkeypatch.setattr(RedditChannel, "_check_opencli", lambda self: opencli)
 
     def test_reports_off_when_nothing_installed(self, monkeypatch):
         self._isolate(monkeypatch)
         monkeypatch.setattr(shutil, "which", lambda _: None)
-        from agent_reach.channels.reddit import RedditChannel
+        from by_reach.channels.reddit import RedditChannel
         status, msg = RedditChannel().check()
         assert status == "off"
         # 诚实口径：明说没有零配置路径，推荐 OpenCLI + rdt git 源
@@ -816,7 +816,7 @@ class TestRedditChannel:
     def test_opencli_ready_wins(self, monkeypatch):
         self._isolate(monkeypatch, opencli=("ok", "OpenCLI 可用（复用浏览器登录态）"))
         monkeypatch.setattr(shutil, "which", lambda _: None)
-        from agent_reach.channels.reddit import RedditChannel
+        from by_reach.channels.reddit import RedditChannel
         ch = RedditChannel()
         status, msg = ch.check()
         assert status == "ok"
@@ -847,7 +847,7 @@ class TestRedditChannel:
                 "Doctor must not execute rdt status"
             ),
         )
-        from agent_reach.channels.reddit import RedditChannel
+        from by_reach.channels.reddit import RedditChannel
         ch = RedditChannel()
         status, msg = ch.check()
         assert status == "warn"
@@ -857,7 +857,7 @@ class TestRedditChannel:
     def test_reports_warn_when_cookie_is_missing(self, monkeypatch):
         self._isolate(monkeypatch)
         monkeypatch.setattr(shutil, "which", lambda _: "/usr/local/bin/rdt")
-        from agent_reach.channels.reddit import RedditChannel
+        from by_reach.channels.reddit import RedditChannel
         ch = RedditChannel()
         status, msg = ch.check()
         assert status == "warn"
@@ -866,7 +866,7 @@ class TestRedditChannel:
         assert ch.active_backend is None
 
     def test_can_handle_reddit_urls(self):
-        from agent_reach.channels.reddit import RedditChannel
+        from by_reach.channels.reddit import RedditChannel
         ch = RedditChannel()
         assert ch.can_handle("https://www.reddit.com/r/python/comments/abc123/")
         assert ch.can_handle("https://redd.it/abc123")
@@ -883,7 +883,7 @@ class TestXiaoHongShuChannel:
 
         opencli: None 表示未安装；否则传入 (status, message) 二元组。
         """
-        import agent_reach.channels.xiaohongshu as xhs_mod
+        import by_reach.channels.xiaohongshu as xhs_mod
 
         monkeypatch.setattr(
             XiaoHongShuChannel, "_check_opencli", lambda self: opencli
@@ -894,7 +894,7 @@ class TestXiaoHongShuChannel:
 
     def test_opencli_bridge_ready_is_unverified(self, monkeypatch):
         monkeypatch.setattr(
-            "agent_reach.backends.opencli_status",
+            "by_reach.backends.opencli_status",
             lambda: OpenCLIStatus(
                 installed=True,
                 extension_connected=True,
@@ -1178,7 +1178,7 @@ class TestBilibiliChannel:
 
     @staticmethod
     def _isolate(monkeypatch, opencli=None, api_ok=False):
-        import agent_reach.channels.bilibili as bilibili_mod
+        import by_reach.channels.bilibili as bilibili_mod
         monkeypatch.setattr(
             bilibili_mod.BilibiliChannel, "_check_opencli", lambda self: opencli
         )
@@ -1195,7 +1195,7 @@ class TestBilibiliChannel:
             return subprocess.CompletedProcess(cmd, 0, "bili, version 0.6.2", "")
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        from agent_reach.channels.bilibili import BilibiliChannel
+        from by_reach.channels.bilibili import BilibiliChannel
         ch = BilibiliChannel()
         status, msg = ch.check()
         assert status == "ok"
@@ -1204,7 +1204,7 @@ class TestBilibiliChannel:
 
     def test_opencli_bridge_ready_is_unverified(self, monkeypatch):
         monkeypatch.setattr(
-            "agent_reach.backends.opencli_status",
+            "by_reach.backends.opencli_status",
             lambda: OpenCLIStatus(
                 installed=True,
                 extension_connected=True,
@@ -1230,7 +1230,7 @@ class TestBilibiliChannel:
             raise FileNotFoundError(cmd[0])
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        from agent_reach.channels.bilibili import BilibiliChannel
+        from by_reach.channels.bilibili import BilibiliChannel
         ch = BilibiliChannel()
         status, msg = ch.check()
         assert status == "ok"  # 搜索 API 兜底
@@ -1249,7 +1249,7 @@ class TestBilibiliChannel:
             raise FileNotFoundError(cmd[0])
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        from agent_reach.channels.bilibili import BilibiliChannel
+        from by_reach.channels.bilibili import BilibiliChannel
         ch = BilibiliChannel()
         status, msg = ch.check()
         assert status == "error"
@@ -1263,7 +1263,7 @@ class TestBilibiliChannel:
             api_ok=True,
         )
         monkeypatch.setattr(shutil, "which", lambda _: None)
-        from agent_reach.channels.bilibili import BilibiliChannel
+        from by_reach.channels.bilibili import BilibiliChannel
         ch = BilibiliChannel()
         status, msg = ch.check()
         assert status == "ok"
@@ -1286,7 +1286,7 @@ class TestBilibiliChannel:
     def test_api_only_still_ok_with_install_nudge(self, monkeypatch):
         self._isolate(monkeypatch, api_ok=True)
         monkeypatch.setattr(shutil, "which", lambda _: None)
-        from agent_reach.channels.bilibili import BilibiliChannel
+        from by_reach.channels.bilibili import BilibiliChannel
         ch = BilibiliChannel()
         status, msg = ch.check()
         assert status == "ok"
@@ -1296,7 +1296,7 @@ class TestBilibiliChannel:
     def test_off_when_everything_unreachable(self, monkeypatch):
         self._isolate(monkeypatch, api_ok=False)
         monkeypatch.setattr(shutil, "which", lambda _: None)
-        from agent_reach.channels.bilibili import BilibiliChannel
+        from by_reach.channels.bilibili import BilibiliChannel
         ch = BilibiliChannel()
         status, msg = ch.check()
         assert status == "off"
@@ -1312,7 +1312,7 @@ class TestYouTubeChannel:
             raise FileNotFoundError(cmd[0])
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        from agent_reach.channels.youtube import YouTubeChannel
+        from by_reach.channels.youtube import YouTubeChannel
         ch = YouTubeChannel()
         status, msg = ch.check()
         assert status == "error"
@@ -1331,7 +1331,7 @@ class TestGitHubChannel:
             raise FileNotFoundError(cmd[0])
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        from agent_reach.channels.github import GitHubChannel
+        from by_reach.channels.github import GitHubChannel
         ch = GitHubChannel()
         status, msg = ch.check()
         assert status == "error"
@@ -1353,7 +1353,7 @@ class TestGitHubChannel:
             return subprocess.CompletedProcess(cmd, 0, "gh version 2.92.0", "")
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        from agent_reach.channels.github import GitHubChannel
+        from by_reach.channels.github import GitHubChannel
         ch = GitHubChannel()
         status, msg = ch.check()
         assert status == "warn"
@@ -1375,7 +1375,7 @@ class TestGitHubChannel:
             return subprocess.CompletedProcess(cmd, 0, "gh version 2.92.0", "")
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        from agent_reach.channels.github import GitHubChannel
+        from by_reach.channels.github import GitHubChannel
         ch = GitHubChannel()
         status, msg = ch.check()
         assert status == "warn"
@@ -1404,7 +1404,7 @@ class TestGitHubChannel:
             ),
         )
 
-        from agent_reach.channels.github import GitHubChannel
+        from by_reach.channels.github import GitHubChannel
 
         status, message = GitHubChannel().check()
 
@@ -1438,7 +1438,7 @@ class TestGitHubChannel:
             ),
         )
 
-        from agent_reach.channels.github import GitHubChannel
+        from by_reach.channels.github import GitHubChannel
 
         channel = GitHubChannel()
         status, message = channel.check()
@@ -1453,7 +1453,7 @@ class TestLinkedInChannel:
     def test_setup_hint_uses_current_stdio_contract(self, monkeypatch):
         monkeypatch.setattr(shutil, "which", lambda _: None)
 
-        from agent_reach.channels.linkedin import LinkedInChannel
+        from by_reach.channels.linkedin import LinkedInChannel
 
         channel = LinkedInChannel()
         status, message = channel.check()
@@ -1498,7 +1498,7 @@ class TestLinkedInChannel:
             else None,
         )
 
-        from agent_reach.channels.linkedin import LinkedInChannel
+        from by_reach.channels.linkedin import LinkedInChannel
 
         status, message = LinkedInChannel().check()
 
@@ -1518,7 +1518,7 @@ class TestLinkedInChannel:
                 "Doctor must not execute mcporter"
             ),
         )
-        from agent_reach.channels.linkedin import LinkedInChannel
+        from by_reach.channels.linkedin import LinkedInChannel
         ch = LinkedInChannel()
         status, msg = ch.check()
         assert status == "off"
@@ -1558,7 +1558,7 @@ class TestLinkedInChannel:
                 "Doctor must not execute mcporter"
             ),
         )
-        from agent_reach.channels.linkedin import LinkedInChannel
+        from by_reach.channels.linkedin import LinkedInChannel
         ch = LinkedInChannel()
         status, msg = ch.check()
         assert status == "warn"
@@ -1585,7 +1585,7 @@ class TestLinkedInChannel:
             encoding="utf-8",
         )
         monkeypatch.setattr(shutil, "which", lambda _: "/usr/local/bin/mcporter")
-        from agent_reach.channels.linkedin import LinkedInChannel
+        from by_reach.channels.linkedin import LinkedInChannel
 
         ch = LinkedInChannel()
         status, _ = ch.check()
@@ -1608,7 +1608,7 @@ class TestLinkedInChannel:
             encoding="utf-8",
         )
         monkeypatch.setattr(shutil, "which", lambda _: "/usr/local/bin/mcporter")
-        from agent_reach.channels.linkedin import LinkedInChannel
+        from by_reach.channels.linkedin import LinkedInChannel
         ch = LinkedInChannel()
         status, msg = ch.check()
         assert status == "off"
@@ -1626,7 +1626,7 @@ class TestExaSearchChannel:
                 "Doctor must not execute mcporter"
             ),
         )
-        from agent_reach.channels.exa_search import ExaSearchChannel
+        from by_reach.channels.exa_search import ExaSearchChannel
         ch = ExaSearchChannel()
         status, msg = ch.check()
         assert status == "off"
@@ -1650,7 +1650,7 @@ class TestExaSearchChannel:
             encoding="utf-8",
         )
         monkeypatch.setattr(shutil, "which", lambda _: "/usr/local/bin/mcporter")
-        from agent_reach.channels.exa_search import ExaSearchChannel
+        from by_reach.channels.exa_search import ExaSearchChannel
         ch = ExaSearchChannel()
         status, msg = ch.check()
         assert status == "warn"
@@ -1677,7 +1677,7 @@ class TestExaSearchChannel:
             encoding="utf-8",
         )
         monkeypatch.setattr(shutil, "which", lambda _: "/usr/local/bin/mcporter")
-        from agent_reach.channels.exa_search import ExaSearchChannel
+        from by_reach.channels.exa_search import ExaSearchChannel
 
         ch = ExaSearchChannel()
         status, _ = ch.check()
@@ -1699,7 +1699,7 @@ class TestExaSearchChannel:
                 "Doctor must not execute mcporter"
             ),
         )
-        from agent_reach.channels.exa_search import ExaSearchChannel
+        from by_reach.channels.exa_search import ExaSearchChannel
 
         ch = ExaSearchChannel()
         status, message = ch.check()
@@ -1717,7 +1717,7 @@ class TestXiaoyuzhouChannel:
             raise FileNotFoundError(cmd[0])
 
         monkeypatch.setattr(subprocess, "run", fake_run)
-        from agent_reach.channels.xiaoyuzhou import XiaoyuzhouChannel
+        from by_reach.channels.xiaoyuzhou import XiaoyuzhouChannel
         ch = XiaoyuzhouChannel()
         status, msg = ch.check()
         assert status == "error"
@@ -1734,7 +1734,7 @@ class TestXiaoyuzhouChannel:
         monkeypatch.setattr(subprocess, "run", fake_run)
         monkeypatch.setattr("os.path.isfile", lambda p: True)  # transcribe.sh 已安装
         monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
-        from agent_reach.channels.xiaoyuzhou import XiaoyuzhouChannel
+        from by_reach.channels.xiaoyuzhou import XiaoyuzhouChannel
         ch = XiaoyuzhouChannel()
         status, msg = ch.check()
         assert status == "ok"
@@ -1745,7 +1745,7 @@ class TestRSSChannel:
     """can_handle URL patterns + the three check() branches (ok / off / error)."""
 
     def test_can_handle_feed_urls(self):
-        from agent_reach.channels.rss import RSSChannel
+        from by_reach.channels.rss import RSSChannel
         ch = RSSChannel()
         assert ch.can_handle("https://example.com/feed")
         assert ch.can_handle("https://example.com/rss")
@@ -1754,13 +1754,13 @@ class TestRSSChannel:
         assert ch.can_handle("https://example.com/index.atom")
 
     def test_can_handle_is_case_insensitive(self):
-        from agent_reach.channels.rss import RSSChannel
+        from by_reach.channels.rss import RSSChannel
         ch = RSSChannel()
         assert ch.can_handle("https://example.com/FEED")
         assert ch.can_handle("https://example.com/Atom.XML")
 
     def test_can_handle_rejects_non_feed_urls(self):
-        from agent_reach.channels.rss import RSSChannel
+        from by_reach.channels.rss import RSSChannel
         ch = RSSChannel()
         assert not ch.can_handle("https://github.com/user/repo")
         assert not ch.can_handle("https://example.com/blog/post-1")
@@ -1771,7 +1771,7 @@ class TestRSSChannel:
         import types
 
         monkeypatch.setitem(sys.modules, "feedparser", types.ModuleType("feedparser"))
-        from agent_reach.channels.rss import RSSChannel
+        from by_reach.channels.rss import RSSChannel
         ch = RSSChannel()
         status, msg = ch.check()
         assert status == "ok"
@@ -1783,7 +1783,7 @@ class TestRSSChannel:
 
         # None in sys.modules makes `import feedparser` raise ImportError
         monkeypatch.setitem(sys.modules, "feedparser", None)
-        from agent_reach.channels.rss import RSSChannel
+        from by_reach.channels.rss import RSSChannel
         ch = RSSChannel()
         status, msg = ch.check()
         assert status == "off"
@@ -1802,7 +1802,7 @@ class TestRSSChannel:
             return real_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", crashing_import)
-        from agent_reach.channels.rss import RSSChannel
+        from by_reach.channels.rss import RSSChannel
         ch = RSSChannel()
         status, msg = ch.check()
         assert status == "error"
@@ -1813,7 +1813,7 @@ class TestRSSChannel:
         """A previously healthy instance must not keep a stale active_backend."""
         import sys
 
-        from agent_reach.channels.rss import RSSChannel
+        from by_reach.channels.rss import RSSChannel
         ch = RSSChannel()
         ch.active_backend = "feedparser"  # pretend an earlier check() succeeded
         monkeypatch.setitem(sys.modules, "feedparser", None)

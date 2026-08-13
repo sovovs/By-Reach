@@ -20,8 +20,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from agent_reach.channels import v2ex as v2
-from agent_reach.channels.v2ex import V2EXChannel
+from by_reach.channels import v2ex as v2
+from by_reach.channels.v2ex import V2EXChannel
 
 # --- can_handle ---
 

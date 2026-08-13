@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-import agent_reach.doctor as doctor
-from agent_reach.config import Config
+import by_reach.doctor as doctor
+from by_reach.config import Config
 
 
 class _StubChannel:
@@ -107,7 +107,7 @@ class TestDoctor:
         # Strip Rich markup tags for assertion (PR #170 added [bold], [yellow] etc.)
         import re
         plain = re.sub(r"\[[^\]]*\]", "", report)
-        assert "Agent Reach" in plain
+        assert "By-Reach" in plain
         assert "装好即用：" in plain
         assert "1/3 个渠道可用" in plain
         # Inactive optional channels should be summarized in one line
@@ -116,7 +116,7 @@ class TestDoctor:
 
 def test_stale_active_backend_does_not_leak_into_errored_result(monkeypatch):
     """渠道单例上一轮的 active_backend 不得泄漏进本轮异常结果(Codex review 发现)。"""
-    from agent_reach import doctor
+    from by_reach import doctor
 
     class _ExplodingChannel:
         name = "boom"
@@ -222,12 +222,12 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
     monkeypatch, tmp_path, capsys
 ):
     """Run the real Doctor collector with deterministic external probes."""
-    import agent_reach.backends.opencli as opencli
-    import agent_reach.channels.bilibili as bilibili
-    import agent_reach.channels.v2ex as v2ex
-    import agent_reach.channels.xiaohongshu as xiaohongshu
-    import agent_reach.channels.xueqiu as xueqiu
-    from agent_reach import cli
+    import by_reach.backends.opencli as opencli
+    import by_reach.channels.bilibili as bilibili
+    import by_reach.channels.v2ex as v2ex
+    import by_reach.channels.xiaohongshu as xiaohongshu
+    import by_reach.channels.xueqiu as xueqiu
+    from by_reach import cli
 
     workdir = tmp_path / "empty-workdir"
     workdir.mkdir()
