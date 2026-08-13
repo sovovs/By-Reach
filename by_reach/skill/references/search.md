@@ -1,36 +1,16 @@
-# 搜索工具
+# Exa 搜索
 
-Exa AI 搜索引擎。
-
-## Exa AI 搜索
-
-高质量 AI 搜索引擎，适合查找技术文档、官方示例和相关网页。
+Exa 是唯一启用的 MCP 搜索来源。通过 `mcporter` 调用
+`exa.web_search_exa`：
 
 ```bash
 mcporter call exa.web_search_exa query="query" numResults=5
-mcporter call exa.web_search_exa query="library API code example" numResults=5
 ```
 
-### 使用场景
+若需要打开结果链接阅读正文，链接随后属于通用网页任务，必须使用：
 
-| 场景 | 参数 |
-|-----|------|
-| 网页搜索 | `web_search_exa(query: "...", numResults: 5)` |
-| 技术/代码资料 | `web_search_exa(query: "框架名 API 示例", numResults: 5)` |
+```bash
+bycli web read --url "URL" --stdout
+```
 
-> Exa MCP 的 `get_code_context_exa` 已弃用且默认不注册。代码问题也使用
-> `web_search_exa`；需要精确搜索仓库内容时，改用 `dev.md` 中的 GitHub 搜索。
-
-### 特点
-
-- 擅长英文内容和技术文档
-- 可通过查询词定位官方文档和代码示例
-- 结果质量高
-
-## 与其他搜索工具对比
-
-| 工具 | 来源 | 适用场景 |
-|-----|------|---------|
-| Exa | by-reach | 英文/技术/代码搜索 |
-| 智谱搜索 | my-mcp-tools | 中文搜索 |
-| GitHub 搜索 | by-reach (dev.md) | 仓库/代码搜索 |
+Exa 不可用时报告搜索失败；不要用其它 MCP 读取器或通用网页机制替代。

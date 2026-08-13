@@ -1,152 +1,35 @@
 ---
 name: by-reach
 description: >
-  MUST USE when user wants to research/search/look up/find anything on the
-  internet — e.g. "research this topic", "do a deep dive on X", "search the
-  web for X", "see what people say about X", "look this up".
-
-  Also MUST USE when user mentions any platform or shares any URL/link:
-  Twitter/X, Reddit, Facebook, Instagram, YouTube, GitHub, Bilibili, XiaoHongShu,
-  Xiaoyuzhou Podcast, LinkedIn/jobs/recruiting, V2EX, Xueqiu (stocks), RSS.
-
-  15 platforms, multi-backend routing (OpenCLI / per-platform CLIs / APIs).
-  Zero config for 6 channels. Run `by-reach doctor --json` to see which
-  backend serves each platform right now.
-
-  NOT for: writing reports/analysis/translation (this skill only FETCHES
-  internet content); posting/commenting/liking (write operations); platforms
-  that already have a dedicated skill installed (prefer that skill).
+  Use when the user asks to research, search, look up, read, collect, or
+  summarize public internet content; gives a URL; or mentions a supported
+  social, video, developer, finance, RSS, podcast, or Exa source.
 metadata:
   homepage: https://github.com/sovovs/By-Reach
 ---
 
-# By-Reach — internet capability router
+# By-Reach
 
-15 platforms, multiple backends each. **When this skill exists, use it for
-these platforms — do not invent your own approach.**
-
-## Standing rules (apply for the whole session)
-
-1. **Health-check before acting**: for multi-backend/login-backed platforms (XiaoHongShu /
-   Reddit / Bilibili / Twitter / Facebook / Instagram), run `by-reach doctor --json` first.
-   Use a populated `active_backend`; `active_backend: null` means Doctor deliberately skipped a
-   live probe to avoid browser-cookie reads or remote writes, not that no backend exists. Only when
-   the user's task requires that platform, run the reference's read-only command to verify it.
-2. **Announce what you use**: say "using by-reach, platform X via backend Y"
-   before starting.
-3. **On failure, follow the retry chains in references/** — never guess
-   commands.
-4. **For broad research tasks**: combine platforms (Exa for web search +
-   Twitter/Reddit for discussions + XiaoHongShu/Bilibili for Chinese
-   perspectives), collect in parallel, then synthesize.
-5. **Watch versions for the user**: after finishing a substantial
-   multi-platform task, run `by-reach check-update` (fast, one API call).
-   If a new version exists, append one line to your wrap-up: "By-Reach
-   vX.Y.Z is available — paste this to me to update: 帮我更新 By-Reach：
-   https://raw.githubusercontent.com/sovovs/By-Reach/main/docs/update.md".
-   Never interrupt the current task to update; never nag about the same version twice.
-
-## Routing table
-
-| User intent | Category | Details |
-|---------|------|---------|
-| Web / code search | search | [references/search.md](references/search.md) |
-| XiaoHongShu / Twitter / Bilibili / V2EX / Reddit / Facebook / Instagram | social | [references/social.md](references/social.md) |
-| Jobs / LinkedIn | career | [references/career.md](references/career.md) |
-| GitHub / code | dev | [references/dev.md](references/dev.md) |
-| Web pages / articles / RSS | web | [references/web.md](references/web.md) |
-| YouTube / Bilibili / podcast transcripts | video | [references/video.md](references/video.md) |
-| Xueqiu / stock quotes | finance | [references/finance.md](references/finance.md) |
-
-## Zero-config quick commands
+This English reference has the same policy as `SKILL.md`. The canonical generic
+URL command is:
 
 ```bash
-# Exa web search
-mcporter call exa.web_search_exa query="query" numResults=5
-
-# Read any web page
-curl -s "https://r.jina.ai/URL"
-
-# GitHub search
-gh search repos "query" --sort stars --limit 10
-
-# YouTube subtitles (never use yt-dlp for Bilibili; retry chain in video.md)
-yt-dlp --write-sub --write-auto-sub --skip-download -o "/tmp/%(id)s" "URL"
-
-# V2EX hot topics
-curl -s "https://www.v2ex.com/api/topics/hot.json" -H "User-Agent: by-reach/1.0"
-
-# Bilibili search (bili-cli, no login needed)
-bili search "query" --type video -n 5
+bycli web read --url "URL" --stdout
 ```
 
-## Login-backed platforms (pick by doctor's active_backend)
+Use this command for every webpage read. `web/read` has no alternate generic
+executor. Do not obtain the page through a direct HTTP client, reader proxy,
+built-in fetcher, legacy adapter, or generic browser before or after byCLI.
+If it fails, report the failure.
 
-Twitter boundary: cookies saved by `by-reach configure twitter-cookies`
-are used only by `doctor` to check whether explicit credentials are present.
-`doctor` does not run `twitter status` or configure the current shell. Before
-calling `twitter` directly, explicitly provide `TWITTER_AUTH_TOKEN` and
-`TWITTER_CT0` in the child-process environment without logging their values.
+For a source-specific route, use its declared first executor once and then its
+listed byCLI fallback once only: `twitter-cli` → `bycli twitter search`;
+`rdt-cli` → `bycli reddit search`; `bili-cli` → `bycli bilibili search`;
+`yt-dlp` → `bycli youtube search`; V2EX API → `bycli v2ex hot`; Xueqiu API →
+`bycli xueqiu search`. Facebook, Instagram, LinkedIn, and XiaoHongShu are
+byCLI-only. GitHub uses `gh`; RSS uses `feedparser`; Exa uses `mcporter` with
+`exa.web_search_exa`; Xiaoyuzhou uses By-Reach transcription.
 
-XiaoHongShu boundary: By-Reach must not log the user in or read browser
-cookies. OpenCLI may use only an existing Chrome session explicitly controlled
-by the user. If none exists, do not automate login; use a manual Cookie-Editor
-export with xiaohongshu-mcp or a legacy tool instead.
-
-```bash
-# Twitter search (twitter-cli preferred; retry chain in social.md)
-twitter search "query" -n 10
-
-# Reddit (NO zero-config path — OpenCLI or rdt-cli, login required)
-opencli reddit search "query" -f yaml   # desktop
-rdt search "query" --limit 10            # legacy/server
-
-# XiaoHongShu (desktop prefers OpenCLI)
-opencli xiaohongshu search "query" -f yaml
-
-# Facebook / Instagram (desktop OpenCLI, browser session)
-opencli facebook search "query" -f yaml
-opencli facebook groups -f yaml
-opencli instagram search "query" -f yaml       # user search
-opencli instagram user USERNAME -f yaml        # recent posts from one user
-```
-
-## Environment check
-
-```bash
-# Channel availability + which backend serves each platform
-by-reach doctor --json
-```
-
-## Discovering OpenCLI adapters
-
-When the routing table lacks a needed platform or command, run `opencli list`,
-then inspect `opencli <platform> --help`. Discovery proves only that an adapter
-exists, not that authentication or target content works. Run read-only commands
-only when the user's task requires that platform, and require non-empty content.
-
-## Workspace rules
-
-**Never create files in the agent workspace.** Use `/tmp/` for temporary
-output and `~/.by-reach/` for persistent data.
-
-## Detailed references
-
-Read the matching file when you need specifics (commands above cover the
-common cases; references hold per-backend command groups, caveats, retry
-chains — note: reference docs are written in Chinese, commands are universal):
-
-- [Search](references/search.md) — Exa AI search
-- [Social](references/social.md) — XiaoHongShu, Twitter, Bilibili, V2EX, Reddit, Facebook, Instagram (multi-backend/login-backed groups)
-- [Career](references/career.md) — LinkedIn
-- [Dev](references/dev.md) — GitHub CLI
-- [Web](references/web.md) — Jina Reader, RSS
-- [Video](references/video.md) — YouTube, Bilibili, Xiaoyuzhou
-- [Finance](references/finance.md) — Xueqiu quotes, search and market content
-
-## Configure a channel
-
-If a channel needs setup, fetch the install guide:
-https://raw.githubusercontent.com/sovovs/By-Reach/main/docs/install.md
-
-The user only provides cookies / one extension click; the agent does the rest.
+Never automate sign-in, read or inject cookies, or expose credentials. See the
+matching file in `references/` for safe command examples and stop after an
+unsuccessful terminal route.

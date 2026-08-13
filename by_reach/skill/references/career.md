@@ -1,29 +1,10 @@
-# 职场招聘
+# LinkedIn 与招聘
 
-LinkedIn。
-
-## LinkedIn
+LinkedIn 是 byCLI-only 平台：
 
 ```bash
-# 获取个人资料
-mcporter call linkedin.get_person_profile linkedin_username="username" sections="experience,education"
-
-# 搜索人才
-mcporter call linkedin.search_people keywords="AI engineer" location="Shanghai"
-
-# 获取公司资料
-mcporter call linkedin.get_company_profile company_name="openai" sections="posts,jobs"
-
-# 搜索职位
-mcporter call linkedin.search_jobs keywords="software engineer" location="Remote" max_pages=2
+bycli linkedin search "software engineer" --stdout
 ```
 
-> **需要登录**: 首次使用前运行 `uvx mcp-server-linkedin@latest --login`，保存有效登录态。
-
-### Fallback 方案
-
-如果 MCP 不可用，可以用 Jina Reader：
-
-```bash
-curl -s "https://r.jina.ai/https://linkedin.com/in/username"
-```
+只进行用户授权的只读检索。没有现成且明确授权的会话时停止；不得自动登录、读取或
+注入浏览器 Cookie，也不得改走其它网页工具。

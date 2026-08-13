@@ -1,46 +1,20 @@
-# 金融行情
+# V2EX 与 Xueqiu
 
-雪球股票行情、搜索与热门内容。行情可能延迟，不构成投资建议。
+使用封装在 By-Reach channel 中的结构化 API，先验证响应包含实质数据。API 请求失败、
+响应为空或结构无效时，才允许各执行一次 byCLI 回退；不得自行发起网页 HTTP 请求。
 
-## 先检查状态
+```python
+from by_reach.channels.v2ex import V2EXChannel
+from by_reach.channels.xueqiu import XueqiuChannel
 
-```bash
-by-reach doctor --json
+V2EXChannel().get_hot_topics(limit=10)
+XueqiuChannel().get_stock_quote("AAPL")
 ```
 
-`xueqiu.active_backend` 有值时按该后端使用；值为 `null` 只表示 Doctor 没有完成
-实时内容验证。雪球需要已登录会话或最小 Cookie，不能把 HTTP 400 当成股票不存在。
-
-## OpenCLI（桌面已有 Chrome 登录态时优先）
-
 ```bash
-# 验证当前登录态
-opencli xueqiu whoami -f yaml
-
-# 股票搜索与实时行情
-opencli xueqiu search "英伟达" -f yaml
-opencli xueqiu stock NVDA -f yaml
-
-# 热门内容与热门股票
-opencli xueqiu hot -f yaml
-opencli xueqiu hot-stock -f yaml
-
-# 查看全部只读命令
-opencli xueqiu --help
+bycli v2ex hot --stdout
+bycli xueqiu search "AAPL" --stdout
 ```
 
-OpenCLI 只复用用户已经存在且明确控制的浏览器会话。不要自动执行
-`opencli xueqiu login`；没有现成登录态时，让用户先在 Chrome 登录，或显式导入
-雪球所需的最小 Cookie：
-
-```bash
-by-reach configure --from-browser chrome --platform xueqiu
-```
-
-该配置只读取并保存 `xq_a_token`，不会顺带采集其他平台 Cookie。
-
-## 验收与失败处理
-
-- 以返回股票名称、代码、价格或非空内容列表为成功；退出码 0 但字段为空不算成功。
-- HTTP 400 通常是会话/Cookie 问题，不表示股票代码不存在。
-- `whoami` 成功而 `stock`/`hot` 失败时，按适配器解析或平台接口问题报告，不要误诊成未登录。
+行情可能延迟且不构成投资建议。若 Xueqiu 的结构化 API 或 byCLI 均不能取得内容，
+报告失败；不要读取浏览器 Cookie 或尝试其它网页路径。
