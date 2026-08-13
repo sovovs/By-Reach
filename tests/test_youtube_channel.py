@@ -69,28 +69,29 @@ def test_has_js_runtime_config_swallows_oserror(tmp_path):
 
 # --- check(): yt-dlp probe states ---
 
-def test_check_off_when_ytdlp_missing():
+def test_check_falls_back_when_ytdlp_missing():
     ch = YouTubeChannel()
-    with patch.object(yt, "probe_command", return_value=ProbeResult("missing")):
+    with patch.object(yt, "probe_command", return_value=ProbeResult("missing")), patch.object(
+        ch, "_check_bycli", return_value=("ok", "byCLI ready")
+    ):
         status, message = ch.check()
-    assert status == "off"
-    assert "yt-dlp[default]" in message
-    assert ch.active_backend is None
+    assert (status, message, ch.active_backend) == ("ok", "byCLI ready", "bycli")
 
 
-def test_check_error_when_ytdlp_broken():
+def test_check_falls_back_when_ytdlp_broken():
     ch = YouTubeChannel()
-    with patch.object(yt, "probe_command", return_value=ProbeResult("broken", hint="relink venv")):
+    with patch.object(yt, "probe_command", return_value=ProbeResult("broken", hint="relink venv")), patch.object(
+        ch, "_check_bycli", return_value=("ok", "byCLI ready")
+    ):
         status, message = ch.check()
-    assert status == "error"
-    assert "relink venv" in message
-    assert "yt-dlp[default]" in message
-    assert ch.active_backend is None
+    assert (status, message, ch.active_backend) == ("ok", "byCLI ready", "bycli")
 
 
-def test_check_error_when_ytdlp_unrunnable():
+def test_check_returns_primary_failure_when_bycli_is_unavailable():
     ch = YouTubeChannel()
-    with patch.object(yt, "probe_command", return_value=ProbeResult("timeout", hint="too slow")):
+    with patch.object(yt, "probe_command", return_value=ProbeResult("timeout", hint="too slow")), patch.object(
+        ch, "_check_bycli", return_value=("off", "unavailable")
+    ):
         status, message = ch.check()
     assert status == "error"
     assert ch.active_backend is None

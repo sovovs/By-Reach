@@ -12,7 +12,7 @@ from by_reach.utils.paths import (
     render_ytdlp_fix_command,
 )
 
-from .base import Channel
+from ._bycli_site import ByCliSiteChannel
 
 _JS_RUNTIMES_SUPPORTED_FROM = (2025, 11, 12)
 _YTDLP_UPGRADE_COMMAND = 'python -m pip install -U "yt-dlp[default]"'
@@ -36,10 +36,10 @@ def _has_js_runtime_config(config_path) -> bool:
         return False
 
 
-class YouTubeChannel(Channel):
+class YouTubeChannel(ByCliSiteChannel):
     name = "youtube"
     description = "YouTube 视频和字幕"
-    _probe_backends = ("yt-dlp",)
+    capability = "youtube/search"
     tier = 0
 
     def can_handle(self, url: str) -> bool:
@@ -52,17 +52,19 @@ class YouTubeChannel(Channel):
         probe = probe_command("yt-dlp", ["--version"], timeout=10, package="yt-dlp")
         if probe.status == "missing":
             self.active_backend = None
-            return "off", f"yt-dlp 未安装。安装：{_YTDLP_UPGRADE_COMMAND}"
+            return self._fallback_or(
+                "off", f"yt-dlp 未安装。安装：{_YTDLP_UPGRADE_COMMAND}"
+            )
         if probe.status == "broken":
             self.active_backend = None
-            return "error", (
+            return self._fallback_or("error", (
                 "yt-dlp 已安装但无法执行。重装（含 JS 支持）：\n"
                 f"  {_YTDLP_UPGRADE_COMMAND}\n{probe.hint}"
-            )
+            ))
         if not probe.ok:  # timeout / error：装了但跑不动
             self.active_backend = None
             detail = probe.hint or probe.output or probe.status
-            return "error", f"yt-dlp 无法正常运行：{detail}"
+            return self._fallback_or("error", f"yt-dlp 无法正常运行：{detail}")
         # yt-dlp 本体是活的；后面的 JS runtime/转写检查只影响 ok/warn，不影响后端归属
         self.active_backend = "yt-dlp"
         # Check JS runtime
@@ -116,6 +118,14 @@ class YouTubeChannel(Channel):
                 else:
                     msg += f"，可转写音频（{'/'.join(providers)}）"
         return "ok", msg
+
+    def _fallback_or(self, status: str, message: str):
+        fallback = self._check_bycli()
+        if fallback[0] == "ok":
+            self.active_backend = "bycli"
+            return fallback
+        self.active_backend = None
+        return status, message
 
     def transcribe(
         self,

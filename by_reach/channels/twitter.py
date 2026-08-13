@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Twitter/X — check if twitter-cli or bird CLI is available."""
+"""Twitter/X — explicit twitter-cli credentials, then byCLI."""
 
 import os
 import shutil
 
 from by_reach.utils.url import host_matches
 
-from .base import Channel
+from ._bycli_site import ByCliSiteChannel
 
 
 def twitter_cli_child_env(config=None) -> dict[str, str]:
@@ -31,55 +31,29 @@ def twitter_cli_child_env(config=None) -> dict[str, str]:
     return child_env
 
 
-class TwitterChannel(Channel):
+class TwitterChannel(ByCliSiteChannel):
     name = "twitter"
     description = "Twitter/X 推文"
-    _probe_backends = ("twitter-cli", "OpenCLI", "bird CLI (legacy)")
-    _probe_backend_aliases = (("bird", "bird CLI (legacy)"),)
+    capability = "twitter/search"
     tier = 1
 
     def can_handle(self, url: str) -> bool:
         return host_matches(url, "x.com", "twitter.com")
 
     def check(self, config=None):
-        """Probe candidates in order; first fully-usable backend wins.
-
-        与其他多后端渠道同一套两段式：先收集全部候选状态，第一个 ok 获胜；
-        没有 ok 才轮到第一个 warn——否则「装了但未登录」的 twitter-cli
-        会把排在后面、完整可用的 OpenCLI 挡在门外。
-        """
         self.active_backend = None
-        findings = []
-
-        for backend in self.ordered_probe_backends(config):
-            if backend == "twitter-cli":
-                result = self._check_twitter_cli(config)
-            elif backend == "OpenCLI":
-                result = self._check_opencli()
-            elif backend == "bird CLI (legacy)":
-                result = self._check_bird()
-            else:
-                continue
-
-            if result is None:
-                continue  # 未安装——不参与候选
-            findings.append((backend, *result))
-
-        for wanted in ("ok", "warn"):
-            for backend, status, message in findings:
-                if status == wanted:
-                    self.active_backend = backend if status == "ok" else None
-                    return status, message
-
-        if findings:  # 只剩 broken/timeout 候选
-            return "error", "\n".join(m for _, _, m in findings)
-
-        return "warn", (
-            "Twitter CLI 未安装。安装方式：\n"
-            "  pipx install twitter-cli\n"
-            "或：\n"
-            "  uv tool install twitter-cli"
-        )
+        primary = self._check_twitter_cli(config)
+        if primary is not None and primary[0] == "ok":
+            self.active_backend = "twitter-cli"
+            return primary
+        fallback = self._check_bycli()
+        if fallback[0] == "ok":
+            self.active_backend = "bycli"
+            return fallback
+        self.active_backend = None
+        if primary is not None:
+            return primary
+        return fallback
 
     def _check_twitter_cli(self, config=None):
         """Inspect explicit credentials without starting twitter-cli.
@@ -97,7 +71,7 @@ class TwitterChannel(Channel):
         )
         ct0 = os.environ.get("TWITTER_CT0") or child_env.get("TWITTER_CT0")
         if auth_token and ct0:
-            return "warn", (
+            return "ok", (
                 "twitter-cli 已安装，且 Cookie-Editor 凭据已配置；"
                 "Doctor 不会执行 `twitter status`，因为上游在验证失败时会"
                 "自动读取浏览器 Cookie。请在你明确同意时手动验证。"
@@ -108,36 +82,3 @@ class TwitterChannel(Channel):
             "  by-reach configure twitter-cookies\n"
             "Doctor 不会自动读取浏览器 Cookie。"
         )
-
-    def _check_opencli(self):
-        """OpenCLI candidate. None = not installed."""
-        from by_reach.backends import opencli_status
-
-        st = opencli_status()
-        if not st.installed:
-            return None
-        if st.broken:
-            return "error", st.hint
-        if st.ready:
-            return "warn", (
-                "OpenCLI 桥接已连接，但 Twitter/X 登录态和实际命令未实时验证；"
-                "Doctor 不执行平台命令，因此当前不标记为可用。"
-            )
-        return "warn", st.hint
-
-    def _check_bird(self):
-        """Inspect legacy bird credentials without launching browser fallback."""
-        for cmd in ("bird", "birdx"):
-            if not shutil.which(cmd):
-                continue
-            if os.environ.get("AUTH_TOKEN") and os.environ.get("CT0"):
-                return (
-                    "warn",
-                    f"{cmd} 已安装且显式环境凭据存在；Doctor 为避免上游"
-                    "浏览器 Cookie 回退，不执行 `check`，未实时验证。",
-                )
-            return "warn", (
-                f"{cmd} 已安装但未检测到显式 AUTH_TOKEN/CT0；"
-                "仅使用 Cookie-Editor 手动导出的凭据。"
-            )
-        return None

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+from types import SimpleNamespace
 
 from by_reach.channels.reddit import RedditChannel
 from by_reach.channels.twitter import TwitterChannel
@@ -51,9 +52,11 @@ def test_twitter_doctor_still_avoids_upstream_fallback_with_saved_credentials(
     )
     monkeypatch.setattr(subprocess, "run", _forbid_subprocess)
 
-    status, message = TwitterChannel().check(Config())
+    channel = TwitterChannel()
+    status, message = channel.check(Config())
 
-    assert status == "warn"
+    assert status == "ok"
+    assert channel.active_backend == "twitter-cli"
     assert "已配置" in message
     assert "不会执行" in message
 
@@ -106,37 +109,10 @@ def test_reddit_doctor_reports_stale_saved_credential_without_refresh(
     assert credential_path.read_bytes() == original
 
 
-def test_xhs_doctor_does_not_create_or_extract_missing_cookies(
+def test_xhs_doctor_is_bycli_only_and_ignores_legacy_cookie_state(
     isolated_home, monkeypatch
 ):
-    monkeypatch.setattr(
-        "shutil.which",
-        lambda name: "/usr/local/bin/xhs" if name == "xhs" else None,
-    )
-    monkeypatch.setattr(subprocess, "run", _forbid_subprocess)
-    monkeypatch.setattr(
-        XiaoHongShuChannel,
-        "_check_opencli",
-        lambda self: None,
-    )
-    monkeypatch.setattr(
-        XiaoHongShuChannel,
-        "_check_mcp",
-        lambda self: None,
-    )
-
-    channel = XiaoHongShuChannel()
-    status, message = channel.check()
-
-    assert status == "warn"
-    assert channel.active_backend is None
-    assert "Cookie-Editor" in message
-    assert not (isolated_home / ".xiaohongshu-cli").exists()
-
-
-def test_xhs_doctor_reports_stale_cookie_without_refresh(
-    isolated_home, monkeypatch
-):
+    """XHS readiness is the declared byCLI capability, never local cookies."""
     cookie_path = isolated_home / ".xiaohongshu-cli" / "cookies.json"
     cookie_path.parent.mkdir(parents=True)
     cookie_path.write_text(
@@ -149,24 +125,16 @@ def test_xhs_doctor_reports_stale_cookie_without_refresh(
         encoding="utf-8",
     )
     original = cookie_path.read_bytes()
-    monkeypatch.setattr(
-        "shutil.which",
-        lambda name: "/usr/local/bin/xhs" if name == "xhs" else None,
-    )
     monkeypatch.setattr(subprocess, "run", _forbid_subprocess)
     monkeypatch.setattr(
-        XiaoHongShuChannel,
-        "_check_opencli",
-        lambda self: None,
-    )
-    monkeypatch.setattr(
-        XiaoHongShuChannel,
-        "_check_mcp",
-        lambda self: None,
+        "by_reach.channels._bycli_site.probe_bycli_capabilities",
+        lambda: SimpleNamespace(
+            has_read=lambda capability: capability == "xiaohongshu/search"
+        ),
     )
 
     status, message = XiaoHongShuChannel().check()
 
-    assert status == "warn"
-    assert "超过 7 天" in message
+    assert status == "ok"
+    assert "byCLI" in message
     assert cookie_path.read_bytes() == original

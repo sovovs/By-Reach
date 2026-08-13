@@ -12,7 +12,7 @@ from urllib.parse import quote, urlencode, urlsplit
 from by_reach.utils.process import utf8_subprocess_env
 from by_reach.utils.text import scrub_url_credentials
 
-from .base import Channel
+from ._bycli_site import ByCliSiteChannel
 
 _UA = "by-reach/1.0"
 _TIMEOUT = 10
@@ -137,10 +137,10 @@ def _get_json(url: str) -> Any:
         return _get_json_with_curl(url)
 
 
-class V2EXChannel(Channel):
+class V2EXChannel(ByCliSiteChannel):
     name = "v2ex"
     description = "V2EX 节点、主题与回复"
-    _probe_backends = ("V2EX API (public)",)
+    capability = "v2ex/hot"
     tier = 0
 
     # ------------------------------------------------------------------ #
@@ -161,10 +161,14 @@ class V2EXChannel(Channel):
             _get_json(
                 "https://www.v2ex.com/api/topics/show.json?node_name=python&page=1"
             )
-            self.active_backend = self.probe_backends[0]
+            self.active_backend = "V2EX API"
             return "ok", "公开 API 可用（热门主题、节点浏览、主题详情、用户信息）"
         except Exception as e:
             self.active_backend = None
+            fallback = self._check_bycli()
+            if fallback[0] == "ok":
+                self.active_backend = "bycli"
+                return fallback
             return (
                 "warn",
                 f"V2EX API 连接失败（可能需要代理）：{scrub_url_credentials(e)}",
@@ -327,8 +331,6 @@ class V2EXChannel(Channel):
         """搜索帖子。
 
         注意：V2EX 公开 API 暂不支持全文搜索端点（/api/search.json 不可用）。
-        本方法通过 Jina Reader 代理 V2EX 站内搜索页面获取结果（纯文本，无结构化数据）。
-
         如需精确搜索，建议直接访问 https://www.v2ex.com/?q=<query> 或
         使用 Exa channel 的 site:v2ex.com 搜索。
 

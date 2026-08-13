@@ -35,7 +35,6 @@ _SENSITIVE_CONFIG_KEYS = {
     "groq-key",
     "openai-key",
     "twitter-cookies",
-    "xhs-cookies",
 }
 
 
@@ -109,7 +108,7 @@ def main():
     p_conf.add_argument("key", nargs="?", default=None,
                         choices=["proxy", "github-token", "groq-key", "openai-key",
                                  "twitter-cookies", "youtube-cookies",
-                                 "xhs-cookies"],
+                                 ],
                         help="What to configure (omit if using --from-browser)")
     p_conf.add_argument("value", nargs="*", help="The value(s) to set")
     p_conf.add_argument(
@@ -123,7 +122,7 @@ def main():
                         help="Extract cookies for one explicitly selected platform")
     p_conf.add_argument(
         "--platform",
-        choices=["twitter", "xiaohongshu", "bilibili", "xueqiu"],
+        choices=["twitter", "bilibili", "xueqiu"],
         help="Platform to import (required with --from-browser)",
     )
     p_conf.add_argument(
@@ -200,10 +199,7 @@ def main():
             p_conf.error("--stdin cannot be combined with --from-browser")
         if not args.platform:
             p_conf.error("--platform is required with --from-browser")
-        manual_keys = {
-            "twitter": "twitter-cookies",
-            "xiaohongshu": "xhs-cookies",
-        }
+        manual_keys = {"twitter": "twitter-cookies"}
         if args.platform in manual_keys:
             p_conf.error(
                 f"{args.platform} requires Cookie-Editor export; use "
@@ -284,16 +280,18 @@ def _cmd_install(args):
     CHANNEL_INSTALLERS = {
         "twitter":     _install_twitter_deps,
         "xiaoyuzhou":  _install_xiaoyuzhou_deps,
-        "xiaohongshu": _install_xhs_deps,
         "reddit":      _install_reddit_deps,
-        "facebook":    _install_opencli_deps,
-        "instagram":   _install_opencli_deps,
         "bilibili":    _install_bili_deps,
-        "opencli":     _install_opencli_deps,  # cross-channel backend, desktop only
         # xueqiu: cookie-only, no install step
         # linkedin: manual setup, no auto-install
     }
-    supported_channels = set(CHANNEL_INSTALLERS) | {"xueqiu", "linkedin"}
+    supported_channels = set(CHANNEL_INSTALLERS) | {
+        "facebook",
+        "instagram",
+        "linkedin",
+        "xiaohongshu",
+        "xueqiu",
+    }
     raw_channels = [
         channel.strip().lower()
         for channel in args.channels.split(",")
@@ -332,8 +330,7 @@ def _cmd_install(args):
         tools_dir = os.path.expanduser(f"~/{CONFIG_DIRNAME}/tools")
         os.makedirs(tools_dir, exist_ok=True)
 
-    OPENCLI_ONLY_CHANNELS = {"opencli", "facebook", "instagram"}
-    COOKIE_CHANNELS = {"twitter", "xueqiu", "bilibili", "xiaohongshu"}
+    COOKIE_CHANNELS = {"twitter", "xueqiu", "bilibili"}
 
     # Auto-detect environment
     env = args.env
@@ -344,12 +341,6 @@ def _cmd_install(args):
         print("Environment: Server/VPS (auto-detected)")
     else:
         print("Environment: Local computer (auto-detected)")
-
-    server_skipped_opencli_channels = set()
-    if env == "server" and requested_channels:
-        # OpenCLI rides a real desktop Chrome session — useless headless
-        server_skipped_opencli_channels = requested_channels & OPENCLI_ONLY_CHANNELS
-        requested_channels -= server_skipped_opencli_channels
 
     # Apply explicit flags
     if args.proxy:
@@ -369,7 +360,9 @@ def _cmd_install(args):
     elif safe_mode:
         _install_system_deps_safe()
     else:
-        core_install_ok = _install_system_deps() is not False
+        system_deps_ok = _install_system_deps() is not False
+        bycli_ok = _install_bycli_deps()
+        core_install_ok = system_deps_ok and bycli_ok
 
     # ── mcporter (for Exa search) ──
     print()
@@ -379,11 +372,6 @@ def _cmd_install(args):
         _install_mcporter_safe()
     else:
         core_install_ok = (_install_mcporter() is not False) and core_install_ok
-
-    if server_skipped_opencli_channels:
-        print()
-        print("  -- OpenCLI 需要桌面环境 + Chrome，服务器环境跳过："
-              f"{', '.join(sorted(server_skipped_opencli_channels))}")
 
     # ── Install optional channels (only if --channels specified) ──
     if requested_channels and not dry_run and not safe_mode:
@@ -414,8 +402,6 @@ def _cmd_install(args):
         for channel in sorted(requested_channels & COOKIE_CHANNELS):
             if channel == "twitter":
                 print("  by-reach configure twitter-cookies")
-            elif channel == "xiaohongshu":
-                print("  by-reach configure xhs-cookies")
             else:
                 print(
                     "  by-reach configure --from-browser chrome "
@@ -453,7 +439,9 @@ def _cmd_install(args):
             )
         else:
             # ── Install agent skill ──
-            skill_install_ok = _install_skill() is not False
+            skill_install_ok = (
+                _install_skill() is not False if core_install_ok else False
+            )
             install_ok = (
                 core_install_ok and optional_install_ok and skill_install_ok
             )
@@ -914,7 +902,7 @@ def _install_system_deps():
                     "(YouTube may not work)"
                 )
 
-    # NOTE: twitter-cli, xiaoyuzhou, xhs-cli etc. are optional.
+    # NOTE: twitter-cli and xiaoyuzhou are optional.
     # They are installed via --channels flag, not here.
     # See CHANNEL_INSTALLERS in _cmd_install().
     return system_install_ok
@@ -1000,107 +988,41 @@ def _install_twitter_deps():
     return False
 
 
-def _install_xhs_deps():
-    """Set up XiaoHongShu — backend depends on environment.
-
-    Desktop: OpenCLI (reuses the browser session, zero config).
-    Server: xiaohongshu-mcp guide with an explicit Cookie-Editor export;
-    we don't manage long-running services, so guide only.
-    xhs-cli is no longer installed by default — upstream unmaintained
-    since 2026-03; existing installs keep working as a fallback backend.
-    """
-    import shutil
-
-    print("Setting up XiaoHongShu...")
-    if _detect_environment() == "server":
-        print("  服务器环境推荐 xiaohongshu-mcp：")
-        print("    1. 下载 binary：https://github.com/xpzouying/xiaohongshu-mcp/releases")
-        print("       （建议放到 ~/.by-reach/tools/ 下）")
-        print("    2. 启动服务（首次运行会下载约 150MB 浏览器，请等待完成）")
-        print("    3. 用 Cookie-Editor 从 xiaohongshu.com 明确导出 Cookie")
-        print("       by-reach configure xhs-cookies（粘贴到隐藏输入提示）")
-        print("    4. 接入：mcporter config add xiaohongshu http://localhost:18060/mcp --scope home")
-        print("    5. 验证：by-reach doctor")
-        return False
-
-    opencli_ok = _install_opencli_deps()
-    xhs_ok = bool(shutil.which("xhs"))
-    if xhs_ok:
-        print("  ✅ 检测到存量 xhs-cli，将作为备选后端继续可用")
-    return opencli_ok or xhs_ok
-
-
-def _install_opencli_deps():
-    """Install OpenCLI — cross-platform backend riding the user's Chrome session.
-
-    Desktop-only. The npm package installs automatically; the Chrome
-    extension CANNOT be installed programmatically (Chrome security model),
-    so we print a one-click guide instead.
-    """
+def _install_bycli_deps():
+    """Install byCLI in explicit system-install mode and validate its manifest."""
     import shutil
     import subprocess
 
-    from by_reach.backends import (
-        OPENCLI_EXTENSION_URL,
-        OPENCLI_PACKAGE,
-        opencli_status,
-        opencli_summary,
-    )
+    from by_reach.bycli import ByCliUnavailableError, probe_bycli_capabilities
 
-    print("Setting up OpenCLI (browser-session backend, desktop only)...")
-    st = opencli_status()
-    if st.installed and not st.broken:
-        print(f"  ✅ {opencli_summary(st)}")
-        if not st.ready:
-            print(f"  {st.hint}")
-        return True
-
+    print("Setting up byCLI capability runtime...")
     npm_cmd = shutil.which("npm")
     if not npm_cmd:
-        print("  [!]  OpenCLI requires Node.js ≥ 20. Install Node first:")
-        print("       https://nodejs.org  （或 brew install node）")
+        print("  [!] byCLI requires npm. Install Node.js first.")
         return False
 
     try:
         install_result = subprocess.run(
-            [npm_cmd, "install", "-g", OPENCLI_PACKAGE],
+            [npm_cmd, "install", "-g", "@sovovs/bycli"],
             capture_output=True, encoding="utf-8", errors="replace", timeout=300,
         )
     except (OSError, subprocess.TimeoutExpired):
         install_result = None
 
-    st = opencli_status()
-    if (
-        install_result is not None
-        and install_result.returncode == 0
-        and st.installed
-        and not st.broken
-    ):
-        print("  ✅ OpenCLI installed")
-        print("  最后一步（必须手动，Chrome 安全限制）：安装浏览器扩展")
-        print(f"    1. 打开 {OPENCLI_EXTENSION_URL}")
-        print("    2. 点「添加至 Chrome」")
-        print("    3. 运行 `opencli doctor` 验证连接")
-        return True
-    else:
-        print(f"  [!]  OpenCLI install failed. Run: npm install -g {OPENCLI_PACKAGE}")
+    if install_result is None or install_result.returncode != 0:
+        print("  [!] byCLI install failed. Run: npm install -g @sovovs/bycli")
         return False
+    try:
+        probe_bycli_capabilities()
+    except ByCliUnavailableError:
+        print("  [!] byCLI installed but its capability manifest is unavailable.")
+        return False
+    print("  ✅ byCLI installed and capability manifest validated")
+    return True
 
 
 def _install_reddit_deps():
-    """Set up Reddit — desktop prefers OpenCLI, rdt-cli for servers/legacy.
-
-    No zero-config path exists (anonymous .json blocked, official API
-    approval-gated since 2025-11) — every backend needs a logged-in session.
-    """
-    if _detect_environment() != "server":
-        installed = _install_opencli_deps()
-        print("  Reddit 走 OpenCLI（浏览器里登录过 reddit.com 即可用）")
-        import shutil
-        if shutil.which("rdt"):
-            print("  ✅ 检测到存量 rdt-cli，将作为备选后端继续可用")
-        return installed
-
+    """Install the policy-primary rdt-cli; byCLI is installed by core setup."""
     return _install_rdt_cli()
 
 
@@ -1291,9 +1213,6 @@ def _install_mcporter():
     except Exception:
         print("  [!]  Could not configure Exa. Run manually: mcporter config add exa https://mcp.exa.ai/mcp --scope home")
         return False
-
-    # NOTE: xhs-cli is now optional, installed via --channels=xiaohongshu
-
 
 def _install_mcporter_safe():
     """Safe mode: check mcporter status, print instructions."""
@@ -1538,10 +1457,6 @@ def _cmd_configure(args):
         print(f"✅ YouTube cookie source configured: {value}")
         print("   yt-dlp will use cookies from this browser for age-restricted/member videos.")
 
-    elif args.key == "xhs-cookies":
-        if not _configure_xhs_cookies(value):
-            raise SystemExit(1)
-
     elif args.key == "github-token":
         config.set("github_token", value)
         print("✅ GitHub token configured!")
@@ -1626,244 +1541,6 @@ def _parse_twitter_cookie_input(value: str):
         ct0 = parts[1]
 
     return auth_token, ct0
-
-
-def _configure_xhs_cookies(value) -> bool:
-    """Import cookies into xiaohongshu-mcp Docker container.
-
-    Accepts two formats:
-    1. Cookie-Editor JSON export (array of cookie objects)
-    2. Header String: "name1=value1; name2=value2; ..."
-
-    The xiaohongshu-mcp container stores cookies at $COOKIES_PATH
-    (default: /app/data/cookies.json or cookies.json in workdir).
-    Format: JSON array of {name, value, domain, path, expires, httpOnly, secure, sameSite}.
-    """
-    import json
-    import os
-    import shutil
-    import subprocess
-
-    value = value.strip()
-    if not value:
-        print("[X] Missing cookie value.")
-        print("   Run `by-reach configure xhs-cookies` and paste the Cookie-Editor export.")
-        print("   For automation, pass the same value through --stdin.")
-        return False
-
-    # Detect format and parse
-    cookies_json = None
-
-    # Try JSON format first (Cookie-Editor JSON export)
-    if value.startswith("["):
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, list) and parsed:
-                from by_reach.utils.url import domain_matches
-
-                valid_cookies = []
-                ignored_domains = 0
-                ignored_invalid = 0
-                for cookie in parsed:
-                    if (
-                        not isinstance(cookie, dict)
-                        or not isinstance(cookie.get("name"), str)
-                        or not cookie["name"]
-                        or not isinstance(cookie.get("value"), str)
-                    ):
-                        ignored_invalid += 1
-                        continue
-                    if not domain_matches(
-                        cookie.get("domain", ""),
-                        "xiaohongshu.com",
-                    ):
-                        ignored_domains += 1
-                        continue
-                    valid_cookies.append(cookie)
-
-                if ignored_domains:
-                    print(
-                        f"  [!] 已忽略 {ignored_domains} 个非 "
-                        "xiaohongshu.com 域 Cookie"
-                    )
-                if ignored_invalid:
-                    print(
-                        f"  [!] 已忽略 {ignored_invalid} 个格式无效的 Cookie"
-                    )
-                if not valid_cookies:
-                    print(
-                        "[X] Cookie-Editor JSON 中没有有效的 "
-                        "xiaohongshu.com 域 Cookie"
-                    )
-                    return False
-                cookies_json = json.dumps(valid_cookies)
-                print(
-                    f"  Parsed {len(valid_cookies)} "
-                    "xiaohongshu.com cookies from JSON format"
-                )
-            else:
-                print("[X] Empty or invalid JSON array")
-                return False
-        except json.JSONDecodeError as e:
-            print(f"[X] Invalid JSON: {e}")
-            return False
-
-    # Header String format: "key1=val1; key2=val2; ..."
-    if cookies_json is None and "=" in value:
-        cookies = []
-        for part in value.split(";"):
-            part = part.strip()
-            if "=" not in part:
-                continue
-            name, val = part.split("=", 1)
-            name = name.strip()
-            val = val.strip()
-            if name:
-                cookies.append({
-                    "name": name,
-                    "value": val,
-                    "domain": ".xiaohongshu.com",
-                    "path": "/",
-                    "expires": -1,
-                    "size": len(name) + len(val),
-                    "httpOnly": False,
-                    "secure": False,
-                    "session": True,
-                    "sameSite": "Lax",
-                })
-        if cookies:
-            cookies_json = json.dumps(cookies)
-            print(f"  Parsed {len(cookies)} cookies from Header String format")
-        else:
-            print("[X] Could not parse any cookies from input")
-            return False
-
-    if not cookies_json:
-        print("[X] Could not parse cookies. Accepted formats:")
-        print('   1. JSON array: \'[{"name":"x","value":"y","domain":".xiaohongshu.com",...}]\'')
-        print('   2. Header String: "key1=val1; key2=val2; ..."')
-        return False
-
-    # Find the container
-    docker = shutil.which("docker")
-    if not docker:
-        # No Docker - write to a local file for manual import.
-        from by_reach.utils.paths import (
-            PrivatePathError,
-            atomic_write_private_text,
-            home_dir,
-        )
-
-        cookie_path = home_dir() / CONFIG_DIRNAME / "xhs-cookies.json"
-        try:
-            atomic_write_private_text(cookie_path, cookies_json)
-        except (OSError, PrivatePathError) as exc:
-            print(f"[X] Could not save cookies safely: {exc}")
-            return False
-        print(f"  Cookies saved to {cookie_path}")
-        print("  Docker not found. Copy manually:")
-        print(f"  docker cp {cookie_path} xiaohongshu-mcp:/app/data/cookies.json")
-        return True
-
-    # Check if xiaohongshu-mcp container is running
-    try:
-        result = subprocess.run(
-            [docker, "ps", "--filter", "name=xiaohongshu-mcp", "--format", "{{.Names}}"],
-            capture_output=True, encoding="utf-8", timeout=5,
-        )
-        container_name = result.stdout.strip()
-        if not container_name:
-            print("[X] xiaohongshu-mcp container is not running.")
-            print("   Start it first:")
-            print("   docker run -d --name xiaohongshu-mcp -p 18060:18060 xpzouying/xiaohongshu-mcp")
-            return False
-    except Exception as e:
-        print(f"[X] Could not check Docker: {e}")
-        return False
-
-    # Find the cookies path inside the container
-    try:
-        result = subprocess.run(
-            [docker, "exec", container_name, "printenv", "COOKIES_PATH"],
-            capture_output=True, encoding="utf-8", timeout=5,
-        )
-        cookie_path_in_container = result.stdout.strip()
-        if not cookie_path_in_container:
-            cookie_path_in_container = "/app/cookies.json"  # fallback: absolute path in workdir
-    except Exception:
-        cookie_path_in_container = "/app/cookies.json"
-
-    # Write cookies into the container
-    tmp_path = None
-    try:
-        # Write to temp file then docker cp
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            f.write(cookies_json)
-            tmp_path = f.name
-
-        result = subprocess.run(
-            [docker, "cp", tmp_path, f"{container_name}:{cookie_path_in_container}"],
-            capture_output=True, encoding="utf-8", timeout=10,
-        )
-
-        if result.returncode != 0:
-            print(f"[X] Failed to copy cookies: {result.stderr}")
-            return False
-
-        print(f"✅ Cookies written to {container_name}:{cookie_path_in_container}")
-        # Restart container so it reloads cookies from disk
-        print("  Restarting container to reload cookies...", end=" ", flush=True)
-        try:
-            restart = subprocess.run(
-                [docker, "restart", container_name],
-                capture_output=True, encoding="utf-8", timeout=30,
-            )
-            if restart.returncode != 0:
-                detail = (
-                    (restart.stderr or "").strip()[:200]
-                    or f"exit {restart.returncode}"
-                )
-                print(f"\n  [!] Could not restart container: {detail}")
-                print(f"  Restart manually: docker restart {container_name}")
-                return False
-            print("done")
-        except Exception as e:
-            print(f"\n  [!] Could not restart container: {e}")
-            print(f"  Restart manually: docker restart {container_name}")
-            return False
-    except Exception as e:
-        print(f"[X] Failed to write cookies: {e}")
-        return False
-    finally:
-        if tmp_path:
-            try:
-                os.unlink(tmp_path)
-            except FileNotFoundError:
-                pass
-            except OSError as e:
-                print(f"  [!] Could not remove temporary cookie file: {e}")
-
-    # Verify login status via mcporter
-    mcporter = shutil.which("mcporter")
-    if mcporter:
-        print("  Verifying login status...", end=" ")
-        try:
-            result = subprocess.run(
-                [mcporter, "call", "xiaohongshu.check_login_status()"],
-                capture_output=True, encoding="utf-8", errors="replace", timeout=15,
-            )
-            if "已登录" in result.stdout or "logged" in result.stdout.lower():
-                print("✅ Login verified!")
-            else:
-                print("[!] Login check returned unexpected result:")
-                print(f"  {result.stdout.strip()[:200]}")
-                print("  Cookies were written but login might not be valid. Try fresh cookies.")
-        except Exception as e:
-            print(f"[!] Could not verify: {e}")
-    else:
-        print("  (mcporter not found, skipping verification)")
-    return True
 
 
 def _cmd_uninstall(args):
@@ -2115,7 +1792,7 @@ def _cmd_setup():
     print()
 
     # Step 3: Reddit — rdt-cli
-    print("【信息】Reddit — 必须登录态（无零配置路径）。桌面推荐 OpenCLI；或 rdt-cli：")
+    print("【信息】Reddit — 必须登录态（无零配置路径）。使用 rdt-cli 或 byCLI：")
     print(f"  安装：pipx install '{_RDT_GIT_SOURCE}'")
     print("  然后运行：rdt login（需先在浏览器登录 reddit.com）")
     print()

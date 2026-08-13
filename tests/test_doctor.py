@@ -288,10 +288,7 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
     monkeypatch, tmp_path, capsys
 ):
     """Run the real Doctor collector with deterministic external probes."""
-    import by_reach.backends.opencli as opencli
-    import by_reach.channels.bilibili as bilibili
     import by_reach.channels.v2ex as v2ex
-    import by_reach.channels.xiaohongshu as xiaohongshu
     import by_reach.channels.xueqiu as xueqiu
     from by_reach import cli
 
@@ -304,14 +301,12 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
 
     available = {
         "gh",
-        "opencli",
         "yt-dlp",
         "bili",
         "ffmpeg",
         "mcporter",
         "twitter",
         "rdt",
-        "xhs",
         "deno",
         "node",
     }
@@ -338,9 +333,6 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
             assert kwargs["env"]["GH_TELEMETRY"] == "false"
             assert kwargs["env"]["DO_NOT_TRACK"] == "true"
             output = "gh version 2.92.0"
-        elif name == "opencli":
-            assert argv[1:] == ["--version"]
-            output = "1.8.6"
         elif name == "yt-dlp":
             output = "2026.01.01"
         elif name == "bili":
@@ -353,10 +345,11 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
             output = json.dumps(
                 [
                     {
-                        "command": "web/read",
+                        "command": command,
                         "access": "read",
                         "site": "web",
                     }
+                    for command in ("web/read", "twitter/search", "reddit/search", "bilibili/search", "facebook/search", "instagram/search", "linkedin/search", "xiaohongshu/search", "youtube/search", "v2ex/hot", "xueqiu/search")
                 ]
             )
         else:
@@ -364,15 +357,6 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
         return subprocess.CompletedProcess(argv, 0, output, "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(opencli, "_fetch_daemon_status", lambda timeout=2: None)
-    monkeypatch.setattr(opencli, "_extension_installed_on_disk", lambda: False)
-    monkeypatch.setattr(
-        opencli, "_unpacked_extension_files_present", lambda: False
-    )
-    monkeypatch.setattr(bilibili, "_search_api_ok", lambda: False)
-    monkeypatch.setattr(
-        xiaohongshu, "_mcp_service_reachable", lambda timeout=3: False
-    )
     monkeypatch.setattr(v2ex, "_get_json", lambda _url: [])
     monkeypatch.setattr(
         xueqiu,
@@ -402,5 +386,5 @@ def test_real_doctor_path_is_zero_write_and_never_runs_risky_status_commands(
         "instagram",
         "xiaohongshu",
     ):
-        assert payload[channel_name]["status"] == "warn"
-        assert payload[channel_name]["active_backend"] is None
+        assert payload[channel_name]["status"] == "ok"
+        assert payload[channel_name]["active_backend"] == "bycli"

@@ -54,23 +54,6 @@ def test_xiaohongshu_guidance_never_starts_implicit_login():
     assert not violations, "\n".join(violations)
 
 
-def test_xiaohongshu_opencli_and_export_boundaries_are_truthful():
-    """Cookie import is for MCP/legacy tools, never OpenCLI or Chrome."""
-    boundary_docs = (
-        ROOT / "docs" / "install.md",
-        ROOT / "by_reach" / "guides" / "setup-xiaohongshu.md",
-        ROOT / "by_reach" / "skill" / "references" / "social.md",
-    )
-    for path in boundary_docs:
-        text = path.read_text(encoding="utf-8")
-        assert "已经存在且明确控制" in text, path.relative_to(ROOT)
-        assert "不会把 Cookie 注入 OpenCLI" in text, path.relative_to(ROOT)
-
-    xhs_guide = boundary_docs[1].read_text(encoding="utf-8")
-    assert "xiaohongshu.com 同域 Cookie 集" in xhs_guide
-    assert "非 xiaohongshu.com 域 Cookie" in xhs_guide
-
-
 def test_twitter_operational_docs_explain_the_environment_boundary():
     """Saved cookies help doctor only; direct twitter commands need env vars."""
     operational_docs = (
@@ -126,8 +109,8 @@ def test_twitter_operational_docs_explain_the_environment_boundary():
     assert not any(claim in all_text for claim in rendered_as_verified)
 
 
-def test_localized_readmes_keep_current_bilibili_and_xhs_routes():
-    """Translations must not revive retired yt-dlp/Bilibili or XHS defaults."""
+def test_localized_readmes_keep_current_bilibili_route():
+    """Translations must not revive the retired yt-dlp Bilibili route."""
     readmes = (
         ROOT / "README.md",
         ROOT / "docs" / "README_en.md",
@@ -140,10 +123,6 @@ def test_localized_readmes_keep_current_bilibili_and_xhs_routes():
         assert "bilibili.py     → yt-dlp" not in text, path.relative_to(ROOT)
         assert "YouTube + Bilibili" not in text, path.relative_to(ROOT)
         assert "bili-cli" in text, path.relative_to(ROOT)
-        assert (
-            "xiaohongshu.py  → OpenCLI ▸ xiaohongshu-mcp ▸ xhs-cli"
-            in text
-        ), path.relative_to(ROOT)
 
 
 def test_localized_readmes_do_not_advertise_retired_channels():

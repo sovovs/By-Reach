@@ -61,17 +61,30 @@ def test_check_validates_detail_quote_endpoint():
 
 def test_check_warn_when_quote_empty():
     ch = XueqiuChannel()
-    with patch.object(xq, "_get_json", return_value={"data": {"quote": {}}}):
+    with patch.object(xq, "_get_json", return_value={"data": {"quote": {}}}), patch.object(
+        ch, "_check_bycli", return_value=("off", "unavailable")
+    ):
         status, message = ch.check()
     assert status == "warn"
     assert "为空" in message
     assert ch.active_backend is None
 
 
+def test_check_empty_quote_falls_back_to_bycli():
+    ch = XueqiuChannel()
+    with patch.object(xq, "_get_json", return_value={"data": {"quote": {}}}), patch.object(
+        ch, "_check_bycli", return_value=("ok", "byCLI ready")
+    ):
+        status, message = ch.check()
+    assert (status, message, ch.active_backend) == ("ok", "byCLI ready", "bycli")
+
+
 def test_check_warn_on_exception():
     import urllib.error
     ch = XueqiuChannel()
-    with patch.object(xq, "_get_json", side_effect=urllib.error.URLError("refused")):
+    with patch.object(xq, "_get_json", side_effect=urllib.error.URLError("refused")), patch.object(
+        ch, "_check_bycli", return_value=("off", "unavailable")
+    ):
         status, message = ch.check()
     assert status == "warn"
     assert "连接失败" in message

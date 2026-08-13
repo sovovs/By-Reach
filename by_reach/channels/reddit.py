@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Reddit — multi-backend: OpenCLI / rdt-cli. Login is mandatory.
+"""Reddit — explicit rdt-cli credentials, then byCLI. Login is mandatory.
 
 Honest tiering (live-verified 2026-06): there is NO zero-config path.
 Anonymous .json endpoints are blocked (403 anti-bot, all variants), and
 the official API closed self-service registration in 2025-11 (manual
 approval, individual scripts rarely granted — PRAW is only an option for
 users who already hold credentials). Every working backend rides a
-logged-in session: OpenCLI reuses the browser's, rdt-cli imports cookies.
+logged-in session: rdt-cli imports cookies or byCLI serves the declared read path.
 """
 
 import json
@@ -19,7 +19,7 @@ from by_reach.utils.paths import (
     read_small_text_no_follow,
 )
 
-from .base import Channel
+from ._bycli_site import ByCliSiteChannel
 
 _CREDENTIAL_FILE = "~/.config/rdt-cli/credential.json"
 _CREDENTIAL_TTL_SECONDS = 7 * 86400
@@ -27,10 +27,10 @@ _MAX_CREDENTIAL_BYTES = 1024 * 1024
 # Pinned to the 0.4.2 state — PyPI still only has 0.4.1 (upstream issue #10).
 _RDT_GIT_SOURCE = "git+https://github.com/public-clis/rdt-cli.git@5e4fb3720d5c174e976cd425ccc3b879d52cac66"
 
-class RedditChannel(Channel):
+class RedditChannel(ByCliSiteChannel):
     name = "reddit"
     description = "Reddit 帖子和评论"
-    _probe_backends = ("OpenCLI", "rdt-cli")
+    capability = "reddit/search"
     tier = 1  # no zero-config path exists — see module docstring
 
     def can_handle(self, url: str) -> bool:
@@ -39,53 +39,17 @@ class RedditChannel(Channel):
         return host_matches(url, "reddit.com", "redd.it")
 
     def check(self, config=None):
-        """Probe candidates in order; first fully-usable backend wins."""
         self.active_backend = None
-        findings = []
-
-        for backend in self.ordered_probe_backends(config):
-            if backend == "OpenCLI":
-                result = self._check_opencli()
-            else:
-                result = self._check_rdt()
-            if result is None:
-                continue
-            findings.append((backend, *result))
-
-        for wanted in ("ok", "warn"):
-            for backend, status, message in findings:
-                if status == wanted:
-                    self.active_backend = backend if status == "ok" else None
-                    return status, message
-
-        if findings:
-            return "error", "\n".join(m for _, _, m in findings)
-
-        return "off", (
-            "未安装任何 Reddit 后端。注意：Reddit 没有零配置路径"
-            "（匿名 .json 已被封，官方 API 需人工审批），必须用登录态。推荐：\n"
-            "  桌面：by-reach install --system --channels opencli\n"
-            "       （复用 Chrome 登录态，登录过 reddit.com 即可用）\n"
-            f"  服务器/存量：pipx install '{_RDT_GIT_SOURCE}'\n"
-            "       然后 `rdt login` 或手动写入 Cookie（见 doctor 提示）\n"
-            "中国大陆访问 Reddit 需要代理"
-        )
-
-    def _check_opencli(self):
-        """OpenCLI candidate. None = not installed."""
-        from by_reach.backends import opencli_status
-
-        st = opencli_status()
-        if not st.installed:
-            return None
-        if st.broken:
-            return "error", st.hint
-        if st.ready:
-            return "warn", (
-                "OpenCLI 桥接已连接，但 Reddit 登录态和实际命令未实时验证；"
-                "Doctor 不执行平台命令，因此当前不标记为可用。"
-            )
-        return "warn", st.hint
+        primary = self._check_rdt()
+        if primary is not None and primary[0] == "ok":
+            self.active_backend = "rdt-cli"
+            return primary
+        fallback = self._check_bycli()
+        if fallback[0] == "ok":
+            self.active_backend = "bycli"
+            return fallback
+        self.active_backend = None
+        return primary or fallback
 
     def _check_rdt(self):
         """Inspect rdt's saved credential without invoking its auto-refresh."""
@@ -130,7 +94,7 @@ class RedditChannel(Channel):
                 "rdt-cli 已安装，保存的 Cookie 已超过 7 天；Doctor 不会让"
                 "上游自动读取浏览器或刷新文件，请用 Cookie-Editor 明确更新。"
             )
-        return "warn", (
+        return "ok", (
             "rdt-cli 已安装并检测到显式保存的 Reddit Cookie；Doctor 为避免"
             "上游自动刷新浏览器 Cookie，不执行 `rdt status`，因此未实时验证。"
         )

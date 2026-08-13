@@ -116,11 +116,9 @@ def test_credential_writes_honor_home_when_expanduser_disagrees(
 
     assert _sync_xfetch_session("auth", "ct0") is True
     assert _sync_bird_env("auth", "ct0") is True
-    assert cli._configure_xhs_cookies("web_session=xhs-secret") is True
-
     assert (intended_home / ".config" / "xfetch" / "session.json").exists()
     assert (intended_home / ".config" / "bird" / "credentials.env").exists()
-    assert (intended_home / ".by-reach" / "xhs-cookies.json").exists()
+    assert not (intended_home / ".by-reach" / "xhs-cookies.json").exists()
     assert list(windows_profile.rglob("*")) == []
 
 
@@ -175,182 +173,6 @@ def test_legacy_bird_sync_refuses_target_symlink(tmp_path, monkeypatch):
     assert _sync_bird_env("new-auth", "new-ct0") is False
     assert victim.read_text(encoding="utf-8") == "KEEP=unchanged\n"
     assert env_path.is_symlink()
-
-
-def test_xhs_cookie_editor_json_ignores_non_xhs_domains(
-    tmp_path, monkeypatch, capsys
-):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr("shutil.which", lambda name: None)
-    exported = [
-        {
-            "name": "web_session",
-            "value": "valid-root",
-            "domain": ".xiaohongshu.com",
-            "path": "/",
-        },
-        {
-            "name": "a1",
-            "value": "valid-subdomain",
-            "domain": "www.xiaohongshu.com",
-            "path": "/",
-        },
-        {
-            "name": "foreign",
-            "value": "must-not-persist",
-            "domain": ".example.com",
-            "path": "/",
-        },
-        {
-            "name": "lookalike",
-            "value": "must-not-persist",
-            "domain": ".notxiaohongshu.com",
-            "path": "/",
-        },
-    ]
-
-    cli._configure_xhs_cookies(json.dumps(exported))
-
-    cookie_path = tmp_path / ".by-reach" / "xhs-cookies.json"
-    saved = json.loads(cookie_path.read_text(encoding="utf-8"))
-    assert [cookie["name"] for cookie in saved] == ["web_session", "a1"]
-    output = capsys.readouterr().out
-    assert "忽略" in output
-    assert "2" in output
-
-
-def test_xhs_cookie_editor_json_fails_without_valid_xhs_cookie(
-    tmp_path, monkeypatch, capsys
-):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(
-        "shutil.which",
-        lambda name: pytest.fail("invalid cookies must fail before tool lookup"),
-    )
-    exported = [
-        {
-            "name": "session",
-            "value": "foreign",
-            "domain": ".example.com",
-        },
-        {
-            "name": "lookalike",
-            "value": "foreign",
-            "domain": ".xiaohongshu.com.evil.test",
-        },
-    ]
-
-    monkeypatch.setattr("by_reach.config.Config", lambda: object())
-    with pytest.raises(SystemExit) as exc:
-        cli._cmd_configure(
-            Namespace(
-                from_browser=None,
-                key="xhs-cookies",
-                value=[json.dumps(exported)],
-                sync_legacy_twitter=False,
-            )
-        )
-
-    assert exc.value.code == 1
-    assert not (tmp_path / ".by-reach" / "xhs-cookies.json").exists()
-    output = capsys.readouterr().out
-    assert "没有有效的 xiaohongshu.com" in output
-
-
-def test_xhs_local_fallback_refuses_target_symlink(
-    tmp_path, monkeypatch, capsys
-):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr("shutil.which", lambda name: None)
-    cookie_path = tmp_path / ".by-reach" / "xhs-cookies.json"
-    cookie_path.parent.mkdir()
-    victim = tmp_path / "victim.json"
-    victim.write_text('{"keep": "unchanged"}', encoding="utf-8")
-    try:
-        cookie_path.symlink_to(victim)
-    except OSError:
-        pytest.skip("symlinks are not supported on this platform")
-
-    result = cli._configure_xhs_cookies("web_session=xhs-secret")
-
-    assert result is False
-    assert victim.read_text(encoding="utf-8") == '{"keep": "unchanged"}'
-    assert cookie_path.is_symlink()
-    assert "Could not save cookies" in capsys.readouterr().out
-
-
-def test_xhs_docker_success_via_configure_command_does_not_exit(
-    monkeypatch, capsys
-):
-    monkeypatch.setattr("by_reach.config.Config", lambda: object())
-    monkeypatch.setattr(
-        "shutil.which",
-        lambda name: "/usr/bin/docker" if name == "docker" else None,
-    )
-
-    def fake_run(args, **_kwargs):
-        if args[1] == "ps":
-            return subprocess.CompletedProcess(
-                args, 0, stdout="xiaohongshu-mcp\n", stderr=""
-            )
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return subprocess.CompletedProcess(
-                args, 0, stdout="/app/data/cookies.json\n", stderr=""
-            )
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    cli._cmd_configure(
-        Namespace(
-            from_browser=None,
-            key="xhs-cookies",
-            value=["web_session=xhs-secret"],
-            sync_legacy_twitter=False,
-        )
-    )
-
-    assert "Cookies written to" in capsys.readouterr().out
-
-
-def test_xhs_docker_failure_via_configure_command_exits_one(
-    monkeypatch, capsys
-):
-    monkeypatch.setattr("by_reach.config.Config", lambda: object())
-    monkeypatch.setattr(
-        "shutil.which",
-        lambda name: "/usr/bin/docker" if name == "docker" else None,
-    )
-
-    def fake_run(args, **_kwargs):
-        if args[1] == "ps":
-            return subprocess.CompletedProcess(
-                args, 0, stdout="xiaohongshu-mcp\n", stderr=""
-            )
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return subprocess.CompletedProcess(
-                args, 0, stdout="/app/data/cookies.json\n", stderr=""
-            )
-        if args[1] == "cp":
-            return subprocess.CompletedProcess(
-                args, 1, stdout="", stderr="copy failed"
-            )
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    with pytest.raises(SystemExit) as exc:
-        cli._cmd_configure(
-            Namespace(
-                from_browser=None,
-                key="xhs-cookies",
-                value=["web_session=xhs-secret"],
-                sync_legacy_twitter=False,
-            )
-        )
-
-    assert exc.value.code == 1
-    assert "Failed to copy cookies" in capsys.readouterr().out
 
 
 def test_ytdlp_config_write_refuses_target_symlink(
@@ -528,6 +350,11 @@ def test_install_system_flag_explicitly_enables_writes(
     )
     monkeypatch.setattr(
         cli,
+        "_install_bycli_deps",
+        lambda: calls.append("bycli") or True,
+    )
+    monkeypatch.setattr(
+        cli,
         "_install_mcporter",
         lambda: calls.append("mcporter"),
     )
@@ -549,7 +376,7 @@ def test_install_system_flag_explicitly_enables_writes(
 
     cli.main()
 
-    assert calls == ["system-deps", "mcporter", "skill"]
+    assert calls == ["system-deps", "bycli", "mcporter", "skill"]
     assert (isolated_home / ".by-reach" / "tools").is_dir()
     assert not (isolated_home / ".agent-reach").exists()
     assert "Installation complete" in capsys.readouterr().out
@@ -589,7 +416,7 @@ def test_install_system_exits_nonzero_when_requested_channel_fails(
     monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
     monkeypatch.setattr(cli, "_install_system_deps", lambda: True)
     monkeypatch.setattr(cli, "_install_mcporter", lambda: True)
-    monkeypatch.setattr(cli, "_install_opencli_deps", lambda: False)
+    monkeypatch.setattr(cli, "_install_bycli_deps", lambda: False)
     monkeypatch.setattr(cli, "_install_skill", lambda: True)
     monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
     monkeypatch.setattr(
@@ -605,9 +432,28 @@ def test_install_system_exits_nonzero_when_requested_channel_fails(
             "--env",
             "local",
             "--system",
-            "--channels=opencli",
+            "--channels=facebook",
         ],
     )
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+
+    assert exc.value.code == 1
+    assert "Installation incomplete" in capsys.readouterr().out
+
+
+def test_install_system_without_requested_channels_requires_bycli(
+    isolated_home, monkeypatch, capsys
+):
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(cli, "_install_system_deps", lambda: True)
+    monkeypatch.setattr(cli, "_install_bycli_deps", lambda: False)
+    monkeypatch.setattr(cli, "_install_mcporter", lambda: True)
+    monkeypatch.setattr(cli, "_install_skill", lambda: pytest.fail("skill install"))
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.format_report", lambda _results: "report")
+    monkeypatch.setattr(cli.sys, "argv", ["by-reach", "install", "--system"])
 
     with pytest.raises(SystemExit) as exc:
         cli.main()

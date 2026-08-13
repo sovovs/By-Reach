@@ -160,6 +160,17 @@ class TestCLI:
         assert auth_token == "token123"
         assert ct0 == "ct0abc"
 
+    def test_xhs_cookie_configuration_route_is_not_exposed(self, capsys):
+        """XHS is ByCLI-only and must not offer a local cookie-import route."""
+        with patch(
+            "sys.argv", ["by-reach", "configure", "xhs-cookies", "a1=value"]
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 2
+        assert "xhs-cookies" in capsys.readouterr().err
+
     def test_twitter_config_does_not_run_unsafe_verification_or_mutate_env(
         self, monkeypatch, capsys
     ):
@@ -214,34 +225,14 @@ class TestCLI:
         assert commands == [["/usr/local/bin/pipx", "install", cli._RDT_GIT_SOURCE]]
         assert "✅ rdt-cli installed" in out
 
-    def test_install_reddit_deps_routes_by_environment(self, monkeypatch):
-        """桌面 → OpenCLI;服务器 → rdt-cli(钉 git 源)。"""
+    def test_install_reddit_deps_uses_policy_primary(self, monkeypatch):
         calls = []
-        monkeypatch.setattr(cli, "_install_opencli_deps", lambda: calls.append("opencli"))
         monkeypatch.setattr(cli, "_install_rdt_cli", lambda: calls.append("rdt"))
-        monkeypatch.setattr(shutil, "which", lambda _: None)
-
-        monkeypatch.setattr(cli, "_detect_environment", lambda: "local")
-        cli._install_reddit_deps()
-        assert calls == ["opencli"]
-
-        calls.clear()
-        monkeypatch.setattr(cli, "_detect_environment", lambda: "server")
         cli._install_reddit_deps()
         assert calls == ["rdt"]
 
-    def test_install_opencli_uses_resolved_windows_npm_path(self, monkeypatch):
-        import by_reach.backends as backends
-        from by_reach.backends import OpenCLIStatus
-
-        statuses = iter(
-            [
-                OpenCLIStatus(installed=False),
-                OpenCLIStatus(installed=True, extension_connected=False),
-            ]
-        )
+    def test_install_bycli_uses_resolved_npm_and_validates_manifest(self, monkeypatch):
         calls = []
-        monkeypatch.setattr(backends, "opencli_status", lambda: next(statuses))
         monkeypatch.setattr(
             shutil,
             "which",
@@ -253,69 +244,19 @@ class TestCLI:
             lambda args, **_kwargs: calls.append(args)
             or subprocess.CompletedProcess(args, 0, "", ""),
         )
+        monkeypatch.setattr(cli, "probe_bycli_capabilities", lambda: object(), raising=False)
+        import by_reach.bycli as bycli
+        monkeypatch.setattr(bycli, "probe_bycli_capabilities", lambda: object())
 
-        assert cli._install_opencli_deps() is True
+        assert cli._install_bycli_deps() is True
         assert calls == [
-            ["C:/Tools/npm.CMD", "install", "-g", backends.OPENCLI_PACKAGE]
+            ["C:/Tools/npm.CMD", "install", "-g", "@sovovs/bycli"]
         ]
 
-    def test_install_facebook_instagram_routes_to_opencli_once(self, monkeypatch, capsys):
-        calls = []
-
-        monkeypatch.setattr(cli, "_detect_environment", lambda: "local")
-        monkeypatch.setattr(cli, "_install_system_deps", lambda: None)
-        monkeypatch.setattr(cli, "_install_mcporter", lambda: None)
-        monkeypatch.setattr(cli, "_install_opencli_deps", lambda: calls.append("opencli"))
-        monkeypatch.setattr(cli, "_install_skill", lambda: None)
-        monkeypatch.setattr(
-            "by_reach.doctor.check_all",
-            lambda config: {
-                "facebook": {
-                    "status": "ok",
-                    "name": "Facebook",
-                    "message": "ok",
-                    "tier": 1,
-                    "backends": ["bycli"],
-                    "active_backend": None,
-                    "active_probe_backend": "OpenCLI",
-                    "probe_status": "ok",
-                }
-            },
-        )
-        monkeypatch.setattr("by_reach.doctor.format_report", lambda results: "report")
-
-        cli._cmd_install(
-            Namespace(
-                env="auto",
-                proxy="",
-                system=True,
-                safe=False,
-                dry_run=False,
-                channels="facebook,instagram,opencli",
-            )
-        )
-
-        assert calls == ["opencli"]
-        assert "Installation complete" in capsys.readouterr().out
-
-    def test_install_server_dry_run_skips_opencli_only_channels(self, monkeypatch, capsys):
+    def test_install_dry_run_rejects_removed_channel_and_does_not_install(self, monkeypatch):
         monkeypatch.setattr(cli, "_install_system_deps_dryrun", lambda: None)
-
-        cli._cmd_install(
-            Namespace(
-                env="server",
-                proxy="",
-                system=True,
-                safe=False,
-                dry_run=True,
-                channels="facebook,instagram,opencli,bilibili",
-            )
-        )
-
-        out = capsys.readouterr().out
-        assert "服务器环境跳过：facebook, instagram, opencli" in out
-        assert "[dry-run] Would install optional channels: bilibili" in out
-        assert "facebook, instagram, opencli, bilibili" not in out
+        with pytest.raises(SystemExit, match="2"):
+            cli._cmd_install(Namespace(env="server", proxy="", system=True, safe=False, dry_run=True, channels="opencli"))
 
 
 class TestCheckUpdateRetry:

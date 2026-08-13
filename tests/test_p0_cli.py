@@ -503,14 +503,10 @@ def test_browser_cookie_import_without_cookie_exits_one(monkeypatch, capsys):
     assert "No cookies found" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize(
-    ("platform", "manual_key"),
-    [("twitter", "twitter-cookies"), ("xiaohongshu", "xhs-cookies")],
-)
-def test_browser_cookie_import_rejects_cookie_editor_only_platforms(
-    monkeypatch, capsys, platform, manual_key
+def test_browser_cookie_import_rejects_twitter_before_opening_browser_store(
+    monkeypatch, capsys
 ):
-    """Twitter/XHS browser stores are never opened by the automatic importer."""
+    """Twitter browser stores are never opened by the automatic importer."""
     import by_reach.cookie_extract as cookie_extract
 
     monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
@@ -528,7 +524,7 @@ def test_browser_cookie_import_rejects_cookie_editor_only_platforms(
             "--from-browser",
             "chrome",
             "--platform",
-            platform,
+            "twitter",
         ],
     )
 
@@ -536,7 +532,32 @@ def test_browser_cookie_import_rejects_cookie_editor_only_platforms(
         cli.main()
 
     assert exc.value.code == 2
-    assert manual_key in capsys.readouterr().err
+    assert "twitter-cookies" in capsys.readouterr().err
+
+
+def test_browser_cookie_import_does_not_offer_xiaohongshu(
+    monkeypatch, capsys
+):
+    """XHS cookie extraction disappeared with the retired local runtime."""
+    monkeypatch.setattr(cli, "_configure_logging", lambda _verbose=False: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "by-reach",
+            "configure",
+            "--from-browser",
+            "chrome",
+            "--platform",
+            "xiaohongshu",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+
+    assert exc.value.code == 2
+    assert "xiaohongshu" in capsys.readouterr().err
 
 
 def test_install_does_not_implicitly_read_browser_cookies(monkeypatch, tmp_path, capsys):
@@ -834,101 +855,6 @@ def test_watch_uses_read_only_config(monkeypatch, capsys):
     assert len(created) == 1
     assert created[0].read_only is True
     assert "全部正常" in capsys.readouterr().out
-
-
-def _docker_result(args, returncode=0, stdout="", stderr=""):
-    return subprocess.CompletedProcess(args, returncode, stdout, stderr)
-
-
-def test_xhs_docker_cookie_copy_succeeds_without_local_os_binding_error(
-    monkeypatch, capsys
-):
-    """The Docker branch must be able to unlink its temporary file."""
-    calls = []
-
-    def fake_which(name):
-        if name == "docker":
-            return "/usr/bin/docker"
-        return None
-
-    def fake_run(args, **_kwargs):
-        calls.append(args)
-        if args[1] == "ps":
-            return _docker_result(args, stdout="xiaohongshu-mcp\n")
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return _docker_result(args, stdout="/app/data/cookies.json\n")
-        return _docker_result(args)
-
-    monkeypatch.setattr("shutil.which", fake_which)
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    cli._configure_xhs_cookies("web_session=xhs_secret")
-
-    output = capsys.readouterr().out
-    assert "Cookies written to xiaohongshu-mcp:/app/data/cookies.json" in output
-    assert "cannot access local variable 'os'" not in output
-    assert any(call[1] == "cp" for call in calls)
-
-
-def test_xhs_docker_cookie_copy_always_removes_temporary_file(monkeypatch, capsys):
-    """Failed docker cp must not leave a plaintext cookie file behind."""
-    copied_from = []
-
-    def fake_which(name):
-        if name == "docker":
-            return "/usr/bin/docker"
-        return None
-
-    def fake_run(args, **_kwargs):
-        if args[1] == "ps":
-            return _docker_result(args, stdout="xiaohongshu-mcp\n")
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return _docker_result(args, stdout="/app/data/cookies.json\n")
-        if args[1] == "cp":
-            copied_from.append(args[2])
-            return _docker_result(args, returncode=1, stderr="copy failed")
-        return _docker_result(args)
-
-    monkeypatch.setattr("shutil.which", fake_which)
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    cli._configure_xhs_cookies("web_session=xhs_secret")
-
-    assert copied_from
-    assert not Path(copied_from[0]).exists()
-    assert "Failed to copy cookies: copy failed" in capsys.readouterr().out
-
-
-def test_xhs_docker_restart_failure_returns_failure(monkeypatch, capsys):
-    """Cookies are not active until the container successfully restarts."""
-
-    def fake_which(name):
-        return "/usr/bin/docker" if name == "docker" else None
-
-    def fake_run(args, **_kwargs):
-        if args[1] == "ps":
-            return _docker_result(args, stdout="xiaohongshu-mcp\n")
-        if args[1:3] == ["exec", "xiaohongshu-mcp"]:
-            return _docker_result(args, stdout="/app/data/cookies.json\n")
-        if args[1] == "restart":
-            return _docker_result(
-                args,
-                returncode=1,
-                stderr="no such container",
-            )
-        return _docker_result(args)
-
-    monkeypatch.setattr("shutil.which", fake_which)
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    result = cli._configure_xhs_cookies("web_session=xhs_secret")
-
-    output = capsys.readouterr().out
-    assert result is False
-    assert "Could not restart container" in output
-    assert "no such container" in output
-    assert "Restart manually" in output
-    assert "done" not in output
 
 
 def test_system_install_uses_ytdlp_first_user_config(
@@ -1371,19 +1297,26 @@ def test_mcporter_install_uses_resolved_windows_command_paths(monkeypatch):
     ]
 
 
-def test_server_xhs_install_never_recommends_qr_or_browser_extraction(
+def test_xhs_install_uses_core_bycli_without_browser_or_legacy_installers(
     monkeypatch, capsys
 ):
-    """Project policy requires an explicit Cookie-Editor export for XHS."""
-    monkeypatch.setattr(cli, "_detect_environment", lambda: "server")
+    calls = []
+    monkeypatch.setattr(cli, "_install_system_deps", lambda: calls.append("core") or True)
+    monkeypatch.setattr(cli, "_install_mcporter", lambda: True)
+    monkeypatch.setattr(cli, "_install_bycli_deps", lambda: calls.append("bycli") or True)
+    monkeypatch.setattr(cli, "_install_skill", lambda: True)
+    monkeypatch.setattr("by_reach.doctor.check_all", lambda _config: {})
+    monkeypatch.setattr("by_reach.doctor.format_report", lambda _results: "report")
 
-    cli._install_xhs_deps()
+    cli._cmd_install(
+        Namespace(env="server", proxy="", system=True, safe=False, dry_run=False, channels="xiaohongshu")
+    )
 
     output = capsys.readouterr().out
-    assert "Cookie-Editor" in output
-    assert "configure xhs-cookies" in output
+    assert calls == ["core", "bycli"]
     assert "扫码" not in output
     assert "二维码" not in output
+    assert "浏览器" not in output
 
 
 def test_configure_usage_does_not_recommend_blocked_twitter_browser_import(
@@ -1597,3 +1530,5 @@ def test_uninstall_preserves_mcporter_entries_without_by_reach_provenance(
     output = capsys.readouterr().out
     assert not any("remove" in call for call in calls)
     assert "来源无法证明" in output
+def _docker_result(args, returncode=0, stdout="", stderr=""):
+    return subprocess.CompletedProcess(args, returncode, stdout, stderr)

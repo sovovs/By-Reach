@@ -103,7 +103,6 @@ def test_cookie_backend_cannot_smuggle_a_lookalike_domain(monkeypatch):
     ("platform", "manual_key"),
     [
         ("twitter", "twitter-cookies"),
-        ("xhs", "xhs-cookies"),
     ],
 )
 def test_browser_extraction_rejects_cookie_editor_platforms(platform, manual_key):
@@ -176,12 +175,17 @@ def test_invalid_platform_error_does_not_echo_url_secrets():
     assert "***" in message
 
 
-@pytest.mark.parametrize("platform", ["twitter", "xhs"])
-def test_configure_from_browser_rejects_cookie_editor_platforms(platform):
+def test_configure_from_browser_rejects_twitter_cookie_editor_platform():
     with pytest.raises(ValueError, match="Cookie-Editor"):
         cookie_extract.configure_from_browser(
-            "chrome", RecordingConfig(), platform=platform
+            "chrome", RecordingConfig(), platform="twitter"
         )
+
+
+def test_xiaohongshu_is_not_a_browser_cookie_extraction_platform():
+    """The retired XHS local runtime must not leave a callable alias behind."""
+    with pytest.raises(ValueError, match="Unsupported platform"):
+        cookie_extract.extract_all("chrome", platform="xhs")
 
 
 def test_xueqiu_config_persists_only_xq_a_token(monkeypatch):

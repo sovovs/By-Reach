@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Facebook — OpenCLI backend using the user's logged-in Chrome session."""
+"""Facebook — byCLI capability-backed channel."""
 
-from ._opencli_site import OpenCLISiteChannel
+from ._bycli_site import ByCliSiteChannel
 
 
-class FacebookChannel(OpenCLISiteChannel):
+class FacebookChannel(ByCliSiteChannel):
     name = "facebook"
     description = "Facebook 帖子、主页和群组"
-    site = "facebook"
+    capability = "facebook/search"
     domains = ("facebook.com", "fb.com", "fb.watch")
-    usage = "opencli facebook search/profile/feed/groups -f yaml"
-    login_hint = "facebook.com"

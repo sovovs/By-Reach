@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from .base import Channel
+from ._bycli_site import ByCliSiteChannel
 
 _UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -111,10 +111,10 @@ def _strip_html(text: str) -> str:
     return text.strip()
 
 
-class XueqiuChannel(Channel):
+class XueqiuChannel(ByCliSiteChannel):
     name = "xueqiu"
     description = "雪球股票行情与社区动态"
-    _probe_backends = ("Xueqiu API (需要登录 Cookie)",)
+    capability = "xueqiu/search"
     tier = 1
 
     # ------------------------------------------------------------------ #
@@ -140,13 +140,21 @@ class XueqiuChannel(Channel):
             )
             quote = (data.get("data") or {}).get("quote") or {}
             if quote:
-                self.active_backend = self.probe_backends[0]
+                self.active_backend = "Xueqiu API"
                 return "ok", "公开 API 可用（行情、搜索、热帖、热股）"
+            fallback = self._check_bycli()
+            if fallback[0] == "ok":
+                self.active_backend = "bycli"
+                return fallback
             return "warn", "API 响应异常（返回数据为空）"
         except Exception as e:
             from by_reach.utils.text import scrub_url_credentials
 
             detail = scrub_url_credentials(e).rstrip(": ")
+            fallback = self._check_bycli()
+            if fallback[0] == "ok":
+                self.active_backend = "bycli"
+                return fallback
             return "warn", (
                 f"Xueqiu API 连接失败：{detail}。"
                 "如需登录 Cookie，请运行：by-reach configure "

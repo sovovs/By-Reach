@@ -25,7 +25,6 @@ def test_channel_registry_contract():
         assert isinstance(ch.description, str) and ch.description
         assert isinstance(ch.backends, list)
         assert ch.backends == [spec.name for spec in ch.policy.executors]
-        assert isinstance(ch.probe_backends, tuple)
         assert ch.tier in {0, 1, 2}
 
 
@@ -88,7 +87,7 @@ def test_ordered_backends_contract(tmp_path):
 
 
 def test_ordered_backends_override_moves_backend_to_front():
-    """Public and transitional probe orders honor matching overrides."""
+    """Approved executor order honors matching overrides."""
     from by_reach.channels.twitter import TwitterChannel
 
     ch = TwitterChannel()
@@ -96,18 +95,10 @@ def test_ordered_backends_override_moves_backend_to_front():
     assert ordered[0] == "bycli"
     assert sorted(ordered) == sorted(ch.backends)
 
-    ordered_probes = ch.ordered_probe_backends({"twitter_backend": "bird"})
-    assert ordered_probes[0] == "bird CLI (legacy)"
-    assert sorted(ordered_probes) == sorted(ch.probe_backends)
-
     # Unknown override is ignored — never hides working backends
     ordered_unknown = ch.ordered_backends({"twitter_backend": "no-such-tool"})
     assert ordered_unknown == list(ch.backends)
 
-    probes_unknown = ch.ordered_probe_backends(
-        {"twitter_backend": "no-such-tool"}
-    )
-    assert probes_unknown == list(ch.probe_backends)
 
 
 @pytest.mark.parametrize("override", ["b", "by", "byclii"])
@@ -121,18 +112,6 @@ def test_public_backend_override_rejects_prefixes_and_typos(override):
         "bycli",
     ]
 
-
-def test_probe_backend_aliases_are_explicit_and_immutable():
-    from by_reach.channels.twitter import TwitterChannel
-
-    channel = TwitterChannel()
-
-    assert channel._probe_backend_aliases == (
-        ("bird", "bird CLI (legacy)"),
-    )
-    assert channel.ordered_probe_backends({"twitter_backend": "bird"})[0] == (
-        "bird CLI (legacy)"
-    )
 
 
 def test_youtube_warns_when_node_only_and_no_config(monkeypatch, tmp_path):

@@ -16,7 +16,6 @@ import sys
 
 import pytest
 
-from by_reach.cli import _configure_xhs_cookies
 from by_reach.cookie_extract import _sync_bird_env, _sync_xfetch_session
 
 
@@ -130,22 +129,3 @@ def test_sync_bird_env_quotes_shell_metachars(tmp_path, monkeypatch):
     # And no side-effect files materialised.
     assert not pwn_auth.exists()
     assert not pwn_ct0.exists()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX perm semantics only")
-def test_configure_xhs_cookies_tightens_local_fallback_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr("shutil.which", lambda name: None if name == "docker" else name)
-
-    cookie_path = tmp_path / ".by-reach" / "xhs-cookies.json"
-    cookie_path.parent.mkdir()
-    cookie_path.write_text("[]", encoding="utf-8")
-    os.chmod(cookie_path, 0o644)
-
-    _configure_xhs_cookies("web_session=xhs_secret")
-
-    assert _owner_only_dir(str(cookie_path.parent)), "~/.by-reach must be 0o700"
-    assert _owner_only(str(cookie_path)), "existing xhs-cookies.json must be tightened"
-    data = json.loads(cookie_path.read_text(encoding="utf-8"))
-    assert data[0]["name"] == "web_session"
-    assert data[0]["value"] == "xhs_secret"

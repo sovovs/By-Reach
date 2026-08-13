@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Instagram — OpenCLI backend using the user's logged-in Chrome session."""
+"""Instagram — byCLI capability-backed channel."""
 
-from ._opencli_site import OpenCLISiteChannel
+from ._bycli_site import ByCliSiteChannel
 
 
-class InstagramChannel(OpenCLISiteChannel):
+class InstagramChannel(ByCliSiteChannel):
     name = "instagram"
     description = "Instagram 用户、主页和指定用户帖子"
-    site = "instagram"
+    capability = "instagram/search"
     domains = ("instagram.com", "instagr.am")
-    usage = "opencli instagram search/profile/user/explore -f yaml"
-    login_hint = "instagram.com"

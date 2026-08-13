@@ -37,12 +37,6 @@ PLATFORM_SPECS: Tuple[PlatformSpec, ...] = (
         "config_key": "twitter",
     },
     {
-        "name": "XiaoHongShu",
-        "domains": (".xiaohongshu.com",),
-        "cookies": None,  # manual Cookie-Editor export only
-        "config_key": "xhs",
-    },
-    {
         "name": "Bilibili",
         "domains": (".bilibili.com",),
         "cookies": ("SESSDATA", "bili_jct"),
@@ -64,7 +58,6 @@ PROFILE_SELECTABLE_BROWSERS = ("chrome", "edge", "brave")
 _MAX_XFETCH_SESSION_BYTES = 64 * 1024
 _COOKIE_EDITOR_ONLY = {
     "twitter": "twitter-cookies",
-    "xhs": "xhs-cookies",
 }
 
 _CHROMIUM_USER_DATA_DIRS: Dict[str, ChromiumPaths] = {
