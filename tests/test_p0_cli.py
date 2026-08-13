@@ -578,8 +578,10 @@ def test_watch_uses_read_only_config(monkeypatch, capsys):
                 "name": "网页",
                 "message": "可用",
                 "tier": 0,
-                "backends": ["Jina Reader"],
-                "active_backend": "Jina Reader",
+                "backends": ["bycli"],
+                "active_backend": None,
+                "active_probe_backend": "Jina Reader",
+                "probe_status": "ok",
             }
         },
     )

@@ -18,7 +18,7 @@ class OpenCLISiteChannel(Channel):
     usage: str = ""
     login_hint: str = ""
 
-    backends = ["OpenCLI"]
+    _probe_backends = ("OpenCLI",)
     tier = 1
 
     def can_handle(self, url: str) -> bool:

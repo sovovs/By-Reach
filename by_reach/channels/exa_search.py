@@ -9,8 +9,9 @@ from .mcporter import McporterConfigError, inspect_mcporter_config
 
 class ExaSearchChannel(Channel):
     name = "exa_search"
+    policy_name = "exa"
     description = "全网语义搜索"
-    backends = ["Exa via mcporter"]
+    _probe_backends = ("Exa via mcporter",)
     tier = 0
 
     def can_handle(self, url: str) -> bool:

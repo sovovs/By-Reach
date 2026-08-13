@@ -10,12 +10,14 @@ import pytest
 
 from by_reach.backends import OpenCLIStatus
 from by_reach.channels import get_all_channels, get_channel
+from by_reach.channels.base import Channel
 from by_reach.channels.bilibili import BilibiliChannel
 from by_reach.channels.facebook import FacebookChannel
 from by_reach.channels.instagram import InstagramChannel
 from by_reach.channels.v2ex import V2EXChannel
 from by_reach.channels.xiaohongshu import XiaoHongShuChannel
 from by_reach.channels.xueqiu import XueqiuChannel
+from by_reach.executor_policy import POLICIES
 
 
 class TestChannelRegistry:
@@ -36,6 +38,41 @@ class TestChannelRegistry:
         assert "facebook" in names
         assert "instagram" in names
         assert "v2ex" in names
+
+    def test_channel_policy_and_compatibility_backends_share_one_source(self):
+        for channel in get_all_channels():
+            assert channel.backends == [
+                item.name for item in channel.policy.executors
+            ]
+            assert type(channel).backends is Channel.backends
+
+    def test_exa_search_resolves_the_exa_policy(self):
+        channel = get_channel("exa_search")
+
+        assert channel.policy_name == "exa"
+        assert channel.policy is POLICIES["exa"]
+
+    def test_channel_with_unknown_policy_fails_clearly(self):
+        class UnknownChannel(Channel):
+            name = "unknown"
+
+            def can_handle(self, url):
+                return False
+
+        with pytest.raises(KeyError, match="unknown executor policy"):
+            UnknownChannel().policy
+
+    @pytest.mark.parametrize("reserved_name", ["backends", "policy"])
+    def test_subclasses_cannot_shadow_policy_controlled_attributes(
+        self, reserved_name
+    ):
+        namespace = {
+            reserved_name: ["unapproved"],
+            "can_handle": lambda self, url: False,
+        }
+
+        with pytest.raises(TypeError, match=reserved_name):
+            type("ShadowingChannel", (Channel,), namespace)
 
 
 class TestOpenCLISiteChannels:
@@ -1459,7 +1496,7 @@ class TestLinkedInChannel:
         status, message = channel.check()
 
         assert status == "off"
-        assert channel.backends[0] == "mcp-server-linkedin"
+        assert channel.probe_backends[0] == "mcp-server-linkedin"
         assert "docs.astral.sh/uv/getting-started/installation" in message
         assert "uvx mcp-server-linkedin@latest --login" in message
         assert (

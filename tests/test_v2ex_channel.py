@@ -40,7 +40,7 @@ def test_check_ok_sets_active_backend():
     with patch.object(v2, "_get_json", return_value=[{"id": 1}]):
         status, message = ch.check()
     assert status == "ok"
-    assert ch.active_backend == ch.backends[0]
+    assert ch.active_backend == ch.probe_backends[0]
 
 
 def test_check_warn_on_exception_clears_backend():
@@ -151,7 +151,7 @@ def test_check_is_healthy_when_native_curl_recovers_tls_eof():
         status, _message = ch.check()
 
     assert status == "ok"
-    assert ch.active_backend == ch.backends[0]
+    assert ch.active_backend == ch.probe_backends[0]
 
 
 # --- get_hot_topics / get_node_topics ---

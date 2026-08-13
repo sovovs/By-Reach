@@ -58,6 +58,8 @@ class TestDoctor:
                 "tier": 0,
                 "backends": ["requests"],
                 "active_backend": "requests",
+                "active_probe_backend": None,
+                "probe_status": None,
             },
             "github": {
                 "status": "warn",
@@ -66,6 +68,8 @@ class TestDoctor:
                 "tier": 0,
                 "backends": ["gh"],
                 "active_backend": None,
+                "active_probe_backend": None,
+                "probe_status": None,
             },
             "exa_search": {
                 "status": "off",
@@ -74,8 +78,48 @@ class TestDoctor:
                 "tier": 1,
                 "backends": ["Exa"],
                 "active_backend": None,
+                "active_probe_backend": None,
+                "probe_status": None,
             },
         }
+
+    def test_real_channel_serializes_policy_while_reporting_legacy_probe(
+        self, monkeypatch
+    ):
+        from by_reach.channels.web import WebChannel
+
+        channel = WebChannel()
+        monkeypatch.setattr(doctor, "get_all_channels", lambda: [channel])
+
+        result = doctor.check_all(config=None)["web"]
+
+        assert result["backends"] == ["bycli"]
+        assert result["active_backend"] is None
+        assert result["active_probe_backend"] == "Jina Reader"
+        assert result["probe_status"] == "ok"
+
+    @pytest.mark.parametrize(
+        ("name", "backend"), [("github", "gh CLI"), ("youtube", "yt-dlp")]
+    )
+    def test_approved_active_backend_is_not_reported_as_probe(
+        self, monkeypatch, name, backend
+    ):
+        channel = _StubChannel(
+            name,
+            name,
+            0,
+            "ok",
+            "healthy",
+            [backend],
+            active_backend=backend,
+        )
+        monkeypatch.setattr(doctor, "get_all_channels", lambda: [channel])
+
+        result = doctor.check_all(config=None)[name]
+
+        assert result["active_backend"] == backend
+        assert result["active_probe_backend"] is None
+        assert result["probe_status"] is None
 
     def test_format_report(self):
         report = doctor.format_report(
@@ -132,6 +176,8 @@ def test_stale_active_backend_does_not_leak_into_errored_result(monkeypatch):
     results = doctor.check_all(config=None)
     assert results["boom"]["status"] == "error"
     assert results["boom"]["active_backend"] is None
+    assert results["boom"]["active_probe_backend"] is None
+    assert results["boom"]["probe_status"] is None
 
 
 def test_channel_exception_credentials_are_scrubbed(monkeypatch):

@@ -114,7 +114,7 @@ def _strip_html(text: str) -> str:
 class XueqiuChannel(Channel):
     name = "xueqiu"
     description = "雪球股票行情与社区动态"
-    backends = ["Xueqiu API (需要登录 Cookie)"]
+    _probe_backends = ("Xueqiu API (需要登录 Cookie)",)
     tier = 1
 
     # ------------------------------------------------------------------ #
@@ -140,7 +140,7 @@ class XueqiuChannel(Channel):
             )
             quote = (data.get("data") or {}).get("quote") or {}
             if quote:
-                self.active_backend = self.backends[0]
+                self.active_backend = self.probe_backends[0]
                 return "ok", "公开 API 可用（行情、搜索、热帖、热股）"
             return "warn", "API 响应异常（返回数据为空）"
         except Exception as e:

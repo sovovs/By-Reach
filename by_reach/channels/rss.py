@@ -7,7 +7,7 @@ from .base import Channel
 class RSSChannel(Channel):
     name = "rss"
     description = "RSS/Atom 订阅源"
-    backends = ["feedparser"]
+    _probe_backends = ("feedparser",)
     tier = 0
 
     def can_handle(self, url: str) -> bool:
@@ -23,5 +23,5 @@ class RSSChannel(Channel):
             # 已安装但导入期崩溃（半残安装/版本冲突）→ 重装处方
             self.active_backend = None
             return "error", f"feedparser 导入失败：{e}\n修复：pip install --force-reinstall feedparser"
-        self.active_backend = self.backends[0]
+        self.active_backend = self.probe_backends[0]
         return "ok", "可读取 RSS/Atom 源"

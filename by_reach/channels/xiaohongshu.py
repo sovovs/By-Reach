@@ -160,7 +160,14 @@ def _clean_comment(comment):
 class XiaoHongShuChannel(Channel):
     name = "xiaohongshu"
     description = "小红书笔记"
-    backends = ["OpenCLI", "xiaohongshu-mcp", "xhs-cli (xiaohongshu-cli)"]
+    _probe_backends = (
+        "OpenCLI",
+        "xiaohongshu-mcp",
+        "xhs-cli (xiaohongshu-cli)",
+    )
+    _probe_backend_aliases = (
+        ("xhs-cli", "xhs-cli (xiaohongshu-cli)"),
+    )
     tier = 1
 
     def can_handle(self, url: str) -> bool:
@@ -178,7 +185,7 @@ class XiaoHongShuChannel(Channel):
         self.active_backend = None
         findings = []  # (backend, status, message)
 
-        for backend in self.ordered_backends(config):
+        for backend in self.ordered_probe_backends(config):
             if backend == "OpenCLI":
                 result = self._check_opencli()
             elif backend == "xiaohongshu-mcp":

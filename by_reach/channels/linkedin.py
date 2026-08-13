@@ -23,7 +23,7 @@ _CONFIG_COMMAND = (
 class LinkedInChannel(Channel):
     name = "linkedin"
     description = "LinkedIn 职业社交"
-    backends = ["mcp-server-linkedin", "Jina Reader"]
+    _probe_backends = ("mcp-server-linkedin", "Jina Reader")
     tier = 2
 
     def can_handle(self, url: str) -> bool:

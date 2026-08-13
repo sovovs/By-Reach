@@ -35,7 +35,7 @@ def _search_api_ok() -> bool:
 class BilibiliChannel(Channel):
     name = "bilibili"
     description = "B站视频、字幕和搜索"
-    backends = ["bili-cli", "OpenCLI", "B站搜索 API"]
+    _probe_backends = ("bili-cli", "OpenCLI", "B站搜索 API")
     tier = 1
 
     def can_handle(self, url: str) -> bool:
@@ -48,7 +48,7 @@ class BilibiliChannel(Channel):
         self.active_backend = None
         findings = []
 
-        for backend in self.ordered_backends(config):
+        for backend in self.ordered_probe_backends(config):
             if backend == "bili-cli":
                 result = self._check_bili_cli()
             elif backend == "OpenCLI":

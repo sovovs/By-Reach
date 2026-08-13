@@ -52,7 +52,7 @@ def test_check_validates_detail_quote_endpoint():
         status, message = ch.check()
 
     assert status == "ok"
-    assert ch.active_backend == ch.backends[0]
+    assert ch.active_backend == ch.probe_backends[0]
     assert requested == [
         "https://stock.xueqiu.com/v5/stock/quote.json"
         "?symbol=SH601138&extend=detail"

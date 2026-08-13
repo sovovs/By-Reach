@@ -34,7 +34,7 @@ def _is_antibot_page(body: bytes) -> bool:
 class WebChannel(Channel):
     name = "web"
     description = "任意网页"
-    backends = ["Jina Reader"]
+    _probe_backends = ("Jina Reader",)
     tier = 0
 
     def can_handle(self, url: str) -> bool:
@@ -42,7 +42,7 @@ class WebChannel(Channel):
 
     def check(self, config=None):
         # 恒可用兜底渠道：无本地命令、不做网络探测（doctor 已有多个渠道触网），保持零开销
-        self.active_backend = self.backends[0]
+        self.active_backend = self.probe_backends[0]
         return "ok", "通过 Jina Reader 读取任意网页（curl https://r.jina.ai/URL）"
 
     def read(self, url: str) -> str:

@@ -12,7 +12,7 @@ from .base import Channel
 class XiaoyuzhouChannel(Channel):
     name = "xiaoyuzhou"
     description = "小宇宙播客转文字"
-    backends = ["groq-whisper", "ffmpeg"]
+    _probe_backends = ("groq-whisper", "ffmpeg")
     tier = 1
 
     def can_handle(self, url: str) -> bool:

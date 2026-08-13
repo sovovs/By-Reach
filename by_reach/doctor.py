@@ -18,29 +18,43 @@ def check_all(config: Config) -> Dict[str, dict]:
 
     A single misbehaving channel must never take the whole report down,
     so per-channel exceptions degrade to status="error".
+
+    ``active_backend`` is always an approved executor. During the Task 6
+    transition, a successful legacy health probe is reported separately as
+    ``active_probe_backend`` with ``probe_status`` and must not be interpreted
+    as the approved route.
     """
     results = {}
     for ch in get_all_channels():
         try:
             status, message = ch.check(config)
-            active = getattr(ch, "active_backend", None)
+            raw_active = getattr(ch, "active_backend", None)
         except Exception as e:  # noqa: BLE001 — doctor must survive any channel
             # Channels are registry singletons: a stale active_backend from a
             # previous check must not leak into an errored result.
             status = "error"
             message = f"体检异常：{e}"
-            active = None
+            raw_active = None
         # Doctor is the final output boundary for both expected channel
         # messages and unexpected exceptions. Upstream probe output can echo a
         # configured URL, so scrub every path before JSON/text rendering.
         message = scrub_url_credentials(message)
+        approved_backends = ch.backends
+        active = raw_active if raw_active in approved_backends else None
+        active_probe = (
+            raw_active
+            if raw_active is not None and raw_active not in approved_backends
+            else None
+        )
         results[ch.name] = {
             "status": status,
             "name": ch.description,
             "message": message,
             "tier": ch.tier,
-            "backends": ch.backends,
+            "backends": approved_backends,
             "active_backend": active,
+            "active_probe_backend": active_probe,
+            "probe_status": status if active_probe is not None else None,
         }
     return results
 

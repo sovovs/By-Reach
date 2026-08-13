@@ -39,7 +39,7 @@ def _has_js_runtime_config(config_path) -> bool:
 class YouTubeChannel(Channel):
     name = "youtube"
     description = "YouTube 视频和字幕"
-    backends = ["yt-dlp"]
+    _probe_backends = ("yt-dlp",)
     tier = 0
 
     def can_handle(self, url: str) -> bool:

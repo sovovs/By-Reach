@@ -39,8 +39,10 @@ class TestCLI:
                     "name": "网页",
                     "message": "可用",
                     "tier": 0,
-                    "backends": ["Jina Reader"],
-                    "active_backend": "Jina Reader",
+                    "backends": ["bycli"],
+                    "active_backend": None,
+                    "active_probe_backend": "Jina Reader",
+                    "probe_status": "ok",
                 }
             },
         ), patch(
@@ -273,8 +275,10 @@ class TestCLI:
                     "name": "Facebook",
                     "message": "ok",
                     "tier": 1,
-                    "backends": ["OpenCLI"],
-                    "active_backend": "OpenCLI",
+                    "backends": ["bycli"],
+                    "active_backend": None,
+                    "active_probe_backend": "OpenCLI",
+                    "probe_status": "ok",
                 }
             },
         )
@@ -474,7 +478,8 @@ class TestWatchVersionCompare:
         monkeypatch.setattr(
             "by_reach.doctor.check_all",
             lambda config: {"web": {"status": "ok", "name": "任意网页", "message": "ok",
-                            "tier": 0, "backends": ["Jina Reader"], "active_backend": "Jina Reader"}},
+                            "tier": 0, "backends": ["bycli"], "active_backend": None,
+                            "active_probe_backend": "Jina Reader", "probe_status": "ok"}},
         )
         cli._cmd_watch()
         out = capsys.readouterr().out

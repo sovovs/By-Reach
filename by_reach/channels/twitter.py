@@ -34,7 +34,8 @@ def twitter_cli_child_env(config=None) -> dict[str, str]:
 class TwitterChannel(Channel):
     name = "twitter"
     description = "Twitter/X 推文"
-    backends = ["twitter-cli", "OpenCLI", "bird CLI (legacy)"]
+    _probe_backends = ("twitter-cli", "OpenCLI", "bird CLI (legacy)")
+    _probe_backend_aliases = (("bird", "bird CLI (legacy)"),)
     tier = 1
 
     def can_handle(self, url: str) -> bool:
@@ -50,7 +51,7 @@ class TwitterChannel(Channel):
         self.active_backend = None
         findings = []
 
-        for backend in self.ordered_backends(config):
+        for backend in self.ordered_probe_backends(config):
             if backend == "twitter-cli":
                 result = self._check_twitter_cli(config)
             elif backend == "OpenCLI":

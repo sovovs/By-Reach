@@ -95,7 +95,7 @@ def _explicit_github_credentials(config) -> bool:
 class GitHubChannel(Channel):
     name = "github"
     description = "GitHub 仓库和代码"
-    backends = ["gh CLI"]
+    _probe_backends = ("gh CLI",)
     tier = 0
 
     def can_handle(self, url: str) -> bool:
