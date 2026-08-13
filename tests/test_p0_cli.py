@@ -565,6 +565,7 @@ def test_install_does_not_implicitly_read_browser_cookies(monkeypatch, tmp_path,
     import by_reach.config as config_module
     import by_reach.cookie_extract as cookie_extract
 
+    calls = []
     monkeypatch.setattr(config_module, "Config", _MemoryConfig)
     monkeypatch.setattr(
         cli.os.path,
@@ -572,6 +573,11 @@ def test_install_does_not_implicitly_read_browser_cookies(monkeypatch, tmp_path,
         lambda value: value.replace("~", str(tmp_path)),
     )
     monkeypatch.setattr(cli, "_install_system_deps", lambda: None)
+    monkeypatch.setattr(
+        cli,
+        "_install_bycli_deps",
+        lambda: calls.append("bycli") or True,
+    )
     monkeypatch.setattr(cli, "_install_mcporter", lambda: None)
     monkeypatch.setattr(cli, "_install_twitter_deps", lambda: None)
     monkeypatch.setattr(cli, "_install_skill", lambda: None)
@@ -601,6 +607,7 @@ def test_install_does_not_implicitly_read_browser_cookies(monkeypatch, tmp_path,
     )
 
     output = capsys.readouterr().out
+    assert calls == ["bycli"]
     assert "configure twitter-cookies" in output
     assert "Importing cookies from browser" not in output
 
